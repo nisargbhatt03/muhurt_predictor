@@ -182,6 +182,8 @@ export default function App() {
   });
 
   const [apiKey, setApiKey] = useState<string>(() => {
+    const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (envKey) return envKey;
     return localStorage.getItem('vastu_muhurat_api_key') || DEFAULT_API_KEY;
   });
 
