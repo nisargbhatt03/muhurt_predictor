@@ -101,7 +101,10 @@ export function generateNext5Days(
   startNakshatra: string,
   startVaar: string,
   startYoga: string,
-  startKaran: string
+  startKaran: string,
+  muhurtTypeId: number = 1,
+  muhurtNameEn: string = "Griha Pravesha",
+  muhurtNameGu: string = "ગૃહપ્રવેશ"
 ): MuhuratInput[] {
   const result: MuhuratInput[] = [];
   
@@ -114,6 +117,9 @@ export function generateNext5Days(
   
   // Day 1 is the starting day
   result.push({
+    muhurtTypeId,
+    muhurtNameEn,
+    muhurtNameGu,
     tithi: formatTithi(tithiNum, tithiPaksha),
     nakshatra,
     vaar,
@@ -133,6 +139,9 @@ export function generateNext5Days(
     karan = getNextKaran(karan);
     
     result.push({
+      muhurtTypeId,
+      muhurtNameEn,
+      muhurtNameGu,
       tithi: formatTithi(tithiNum, tithiPaksha),
       nakshatra,
       vaar,

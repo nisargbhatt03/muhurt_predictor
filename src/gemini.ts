@@ -1,4 +1,9 @@
+import { getMuhurtRulesSummaryText } from './muhurtData';
+
 export interface MuhuratInput {
+  muhurtTypeId: number;
+  muhurtNameEn: string;
+  muhurtNameGu: string;
   tithi: string;
   nakshatra: string;
   vaar: string;
@@ -16,33 +21,28 @@ export interface PredictionResult {
   karanAnalysis: string;
   overallAnalysis: string;
   remedies: string[];
+  // Additional fields when auto-fetched by date
+  date?: string;
+  tithi?: string;
+  nakshatra?: string;
+  vaar?: string;
+  yoga?: string;
+  karan?: string;
 }
 
 export async function fetchVastuPrediction(
   input: MuhuratInput,
   apiKey: string
 ): Promise<PredictionResult> {
-  const systemPrompt = `You are a master Indian Vedic Astrologer and Vastu Shastra expert.
-Your job is to analyze a Vastu Muhurat (timing suitability for starting house construction or moving into a new home / Griha Pravesh) based on the five limbs of Panchang provided: Tithi, Nakshatra, Vaar, Yoga, and Karan.
+  const rulesSummary = getMuhurtRulesSummaryText(input.muhurtTypeId);
 
-Analyze the inputs strictly against these classical rules:
-1. **Tithi (Lunar Day)**:
-   - Auspicious: Dwitiya (2), Tritiya (3), Panchami (5), Saptami (7), Dashami (10), Ekadashi (11), Dwadashi (12), Trayodashi (13) of Shukla Paksha (bright fortnight).
-   - Inauspicious (Avoid): Amavasya, Rikta Tithis (4, 9, 14), and Krishna Paksha dates (except highly benefic ones).
-2. **Nakshatra (Lunar Mansion)**:
-   - Auspicious (Fixed/Sthira & Gentle/Mridu): Rohini, Uttara Phalguni, Uttara Ashadha, Uttara Bhadrapada, Anuradha, Chitra, Dhanishta, Shatabhisha, Revati.
-3. **Vaar (Solar Weekday)**:
-   - Auspicious: Monday, Wednesday, Thursday, Friday.
-   - Special/Conditional: Sunday.
-   - Restricted (Avoid): Tuesday, Saturday.
-4. **Yoga (Luni-solar Combination)**:
-   - Auspicious: Siddhi, Amrita, Shubha, Shukla, Brahma, Aindra.
-   - Malefic (Avoid): Visha, Vyatipata, Vaidhriti.
-5. **Karan (Half of Tithi)**:
-   - Auspicious: Bava, Balava, Kaulava, Taitila, Garaja, Vanija.
-   - Restricted (Avoid): Vishti (Bhadra Karan).
+  const systemPrompt = `You are a master Indian Vedic Astrologer and Muhurt expert.
+Your job is to analyze the Muhurt timing suitability for "${input.muhurtNameEn}" (${input.muhurtNameGu}) based on the five limbs of Panchang provided: Tithi, Nakshatra, Vaar, Yoga, and Karan.
 
-Calculate an Auspiciousness Score from 0 to 100. Provide details for each limb and a final verdict.
+Analyze the inputs strictly against these classical Vedic rules for ${input.muhurtNameEn}:
+${rulesSummary}
+
+Calculate an Auspiciousness Score from 0 to 100 specifically for performing ${input.muhurtNameEn} (${input.muhurtNameGu}). Provide details for each limb and a final verdict.
 You MUST respond ONLY with a raw JSON object containing these exact fields, with no markdown code blocks around it:
 {
   "auspiciousnessScore": number,
@@ -57,14 +57,14 @@ You MUST respond ONLY with a raw JSON object containing these exact fields, with
 }
 Ensure there is absolutely no text other than the raw JSON object. Do not wrap the JSON in \`\`\`json or similar blocks.`;
 
-  const userMessage = `Inputs to analyze:
+  const userMessage = `Inputs to analyze for ${input.muhurtNameEn} (${input.muhurtNameGu}):
 - Tithi: ${input.tithi}
 - Nakshatra: ${input.nakshatra}
 - Vaar: ${input.vaar}
 - Yoga: ${input.yoga}
 - Karan: ${input.karan}
 
-Please generate the Vastu Muhurat prediction JSON.`;
+Please generate the Muhurt prediction JSON.`;
 
   try {
     const apiVersions = ["v1beta", "v1"];
@@ -119,7 +119,6 @@ Please generate the Vastu Muhurat prediction JSON.`;
       throw new Error("No response text returned from Gemini API");
     }
 
-    // Clean up markdown block headers if Gemini returned them despite instructions
     text = text.trim();
     if (text.startsWith("```")) {
       text = text.replace(/^```(json)?/, "").replace(/```$/, "").trim();
@@ -128,7 +127,111 @@ Please generate the Vastu Muhurat prediction JSON.`;
     const parsedResult = JSON.parse(text) as PredictionResult;
     return parsedResult;
   } catch (error) {
-    console.error("Vastu API error:", error);
+    console.error("Muhurt API error:", error);
+    throw error;
+  }
+}
+
+export async function fetchVastuPredictionForDate(
+  targetDate: string,
+  input: MuhuratInput,
+  apiKey: string
+): Promise<PredictionResult> {
+  const rulesSummary = getMuhurtRulesSummaryText(input.muhurtTypeId);
+
+  const systemPrompt = `You are a master Indian Vedic Astrologer and Muhurt expert.
+Your job is to automatically compute and fetch the Indian Panchang (Tithi, Nakshatra, Vaar, Yoga, Karan for IST / India timezone) for the target date: ${targetDate}.
+Then evaluate the Muhurt suitability score (0 to 100) and detailed analysis specifically for performing "${input.muhurtNameEn}" (${input.muhurtNameGu}) on ${targetDate}.
+
+Astrological rules for ${input.muhurtNameEn}:
+${rulesSummary}
+
+You MUST respond ONLY with a raw JSON object containing these exact fields:
+{
+  "date": "${targetDate}",
+  "tithi": "Calculated Tithi name (e.g. Shukla Panchami)",
+  "nakshatra": "Calculated Nakshatra name (e.g. Rohini)",
+  "vaar": "Calculated Weekday name (e.g. Monday)",
+  "yoga": "Calculated Yoga name (e.g. Siddhi)",
+  "karan": "Calculated Karan name (e.g. Bava)",
+  "auspiciousnessScore": number,
+  "verdict": "string (e.g. Highly Auspicious, Auspicious, Avoid)",
+  "tithiAnalysis": "string",
+  "nakshatraAnalysis": "string",
+  "vaarAnalysis": "string",
+  "yogaAnalysis": "string",
+  "karanAnalysis": "string",
+  "overallAnalysis": "string",
+  "remedies": ["string", "string", ...]
+}
+Ensure there is absolutely no text other than the raw JSON object. Do not wrap the JSON in \`\`\`json or similar blocks.`;
+
+  const userMessage = `Target Date: ${targetDate}
+Target Ceremony: ${input.muhurtNameEn} (${input.muhurtNameGu})
+Please calculate Indian Panchang for ${targetDate} and generate the Muhurt prediction JSON.`;
+
+  try {
+    const apiVersions = ["v1beta", "v1"];
+    let response: Response | null = null;
+
+    for (const version of apiVersions) {
+      try {
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/${version}/models/gemini-3.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    {
+                      text: `${systemPrompt}\n\n${userMessage}`,
+                    },
+                  ],
+                },
+              ],
+            }),
+          }
+        );
+
+        if (response.ok) {
+          break;
+        }
+
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.error?.message || `API request failed with status ${response.status}`
+        );
+      } catch (error) {
+        console.warn(`Gemini API call with ${version} failed:`, error);
+        if (version === apiVersions[apiVersions.length - 1]) {
+          throw error;
+        }
+      }
+    }
+
+    if (!response) {
+      throw new Error("No response received from Gemini API");
+    }
+
+    const data = await response.json();
+    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      throw new Error("No response text returned from Gemini API");
+    }
+
+    text = text.trim();
+    if (text.startsWith("```")) {
+      text = text.replace(/^```(json)?/, "").replace(/```$/, "").trim();
+    }
+
+    const parsedResult = JSON.parse(text) as PredictionResult;
+    return parsedResult;
+  } catch (error) {
+    console.error("Muhurt Date API error:", error);
     throw error;
   }
 }
@@ -158,38 +261,30 @@ export interface Best5DaysPredictionResult {
 
 export async function fetchVastuBest5DaysPrediction(
   startDate: string,
+  endDate: string,
   startInput: MuhuratInput,
   apiKey: string
 ): Promise<Best5DaysPredictionResult> {
-  const systemPrompt = `You are a master Indian Vedic Astrologer and Vastu Shastra expert.
-Your job is to identify the 5 best Vastu Muhurats (auspicious dates and times for starting house construction or moving into a new home / Griha Pravesh) within the next 1 year starting from the reference calendar date provided, based on the starting Panchang details provided.
+  const rulesSummary = getMuhurtRulesSummaryText(startInput.muhurtTypeId);
 
-The reference calendar date is: ${startDate}.
-The starting Panchang limbs for this reference date are:
+  const systemPrompt = `You are a master Indian Vedic Astrologer and Muhurt expert.
+Your job is to identify the 5 best Muhurats for "${startInput.muhurtNameEn}" (${startInput.muhurtNameGu}) strictly between the start date ${startDate} and end date ${endDate}, based on the Panchang details provided.
+
+Target Date Window: ${startDate} to ${endDate}.
+Target Muhurt Ceremony: ${startInput.muhurtNameEn} (${startInput.muhurtNameGu}).
+
+The starting Panchang limbs for ${startDate} are:
 - Tithi: ${startInput.tithi}
 - Nakshatra: ${startInput.nakshatra}
 - Vaar: ${startInput.vaar}
 - Yoga: ${startInput.yoga}
 - Karan: ${startInput.karan}
 
-Using your knowledge of the Hindu calendar (Panchang) and planetary cycles, calculate and select the **5 most auspicious dates** for Vastu Muhurat in the next 1 year (from ${startDate} to 1 year later).
-For each of these 5 days, determine their corresponding calendar date, day of week, and Panchang limbs (Tithi, Nakshatra, Vaar, Yoga, Karan) and calculate an Auspiciousness Score from 0 to 100 based on these rules:
+Astrological rules for ${startInput.muhurtNameEn}:
+${rulesSummary}
 
-1. **Tithi (Lunar Day)**:
-   - Auspicious: Dwitiya (2), Tritiya (3), Panchami (5), Saptami (7), Dashami (10), Ekadashi (11), Dwadashi (12), Trayodashi (13) of Shukla Paksha (bright fortnight).
-   - Inauspicious (Avoid): Amavasya, Rikta Tithis (4, 9, 14), and Krishna Paksha dates (except highly benefic ones).
-2. **Nakshatra (Lunar Mansion)**:
-   - Auspicious (Fixed/Sthira & Gentle/Mridu): Rohini, Uttara Phalguni, Uttara Ashadha, Uttara Bhadrapada, Anuradha, Chitra, Dhanishta, Shatabhisha, Revati.
-3. **Vaar (Solar Weekday)**:
-   - Auspicious: Monday, Wednesday, Thursday, Friday.
-   - Special/Conditional: Sunday.
-   - Restricted (Avoid): Tuesday, Saturday.
-4. **Yoga (Luni-solar Combination)**:
-   - Auspicious: Siddhi, Amrita, Shubha, Shukla, Brahma, Aindra.
-   - Malefic (Avoid): Visha, Vyatipata, Vaidhriti.
-5. **Karan (Half of Tithi)**:
-   - Auspicious: Bava, Balava, Kaulava, Taitila, Garaja, Vanija.
-   - Restricted (Avoid): Vishti (Bhadra Karan).
+Using your knowledge of the Hindu calendar (Panchang) and planetary cycles, calculate and select the **5 most auspicious dates** for ${startInput.muhurtNameEn} strictly within the specified window (from ${startDate} to ${endDate}).
+For each of these 5 days, determine their corresponding calendar date, day of week, and Panchang limbs (Tithi, Nakshatra, Vaar, Yoga, Karan) and calculate an Auspiciousness Score from 0 to 100 based on the provided rules.
 
 You MUST respond ONLY with a raw JSON object containing an array of predictions for the 5 days, matching this exact TypeScript interface:
 interface BestDayPrediction {
@@ -216,8 +311,8 @@ interface Best5DaysPredictionResult {
 
 Ensure there is absolutely no text other than the raw JSON object. Do not wrap the JSON in \`\`\`json or similar blocks.`;
 
-  const userMessage = `Reference date: ${startDate}
-Please calculate and identify the 5 best Vastu Muhurat dates in the next 1 year starting from this reference date. Generate the Vastu Muhurat prediction JSON matching the Best5DaysPredictionResult interface.`;
+  const userMessage = `Date range: ${startDate} to ${endDate}
+Please calculate and identify the 5 best Muhurt dates for ${startInput.muhurtNameEn} (${startInput.muhurtNameGu}) strictly within this date range (${startDate} to ${endDate}). Generate the Muhurt prediction JSON matching the Best5DaysPredictionResult interface.`;
 
   try {
     const apiVersions = ["v1beta", "v1"];
@@ -272,7 +367,6 @@ Please calculate and identify the 5 best Vastu Muhurat dates in the next 1 year 
       throw new Error("No response text returned from Gemini API");
     }
 
-    // Clean up markdown block headers if Gemini returned them despite instructions
     text = text.trim();
     if (text.startsWith("```")) {
       text = text.replace(/^```(json)?/, "").replace(/```$/, "").trim();
@@ -280,14 +374,13 @@ Please calculate and identify the 5 best Vastu Muhurat dates in the next 1 year 
 
     const parsedResult = JSON.parse(text) as Best5DaysPredictionResult;
     
-    // Sort predictions by rank to ensure order
     if (parsedResult && parsedResult.predictions) {
       parsedResult.predictions.sort((a, b) => a.rank - b.rank);
     }
     
     return parsedResult;
   } catch (error) {
-    console.error("Vastu Best 5 Days API error:", error);
+    console.error("Muhurt Best 5 Days API error:", error);
     throw error;
   }
 }

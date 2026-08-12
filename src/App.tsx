@@ -2,13 +2,35 @@ import { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   Compass, 
-  AlertTriangle, 
-  Settings, 
   Star, 
-  Home
+  Home,
+  Filter,
+  Sun,
+  Moon,
+  MoreVertical,
+  Settings,
+  Check,
+  User,
+  ShieldAlert,
+  PhoneCall
 } from 'lucide-react';
-import { fetchVastuPrediction, fetchVastuBest5DaysPrediction } from './gemini';
+import { 
+  fetchVastuPrediction, 
+  fetchVastuBest5DaysPrediction, 
+  fetchVastuPredictionForDate 
+} from './gemini';
 import type { PredictionResult, MuhuratInput, Best5DaysPredictionResult } from './gemini';
+import { 
+  ALL_MUHURTS, 
+  getMuhurtRules, 
+  filterTithis, 
+  filterNakshatras, 
+  filterVaars, 
+  filterYogas, 
+  filterKarans 
+} from './muhurtData';
+import { VedicDatePicker } from './VedicDatePicker';
+import { ProfileModal } from './ProfileModal';
 
 // Options definitions with details
 const tithiNumbers = [
@@ -95,13 +117,13 @@ const nakshatraOptions = [
 ];
 
 const vaarOptions = [
+  { value: 'Sunday', label: 'Sunday - Special cases only', isAuspicious: true, desc: 'Sun day, average; requires strong chart' },
   { value: 'Monday', label: 'Monday - Preferred', isAuspicious: true, desc: 'Moon day, peace and growth' },
   { value: 'Tuesday', label: 'Tuesday - Restricted (Avoid)', isAuspicious: false, desc: 'Mars day, fire, anger, and disputes' },
   { value: 'Wednesday', label: 'Wednesday - Preferred', isAuspicious: true, desc: 'Mercury day, intelligence and trade' },
   { value: 'Thursday', label: 'Thursday - Preferred', isAuspicious: true, desc: 'Jupiter day, wisdom and gold' },
   { value: 'Friday', label: 'Friday - Preferred', isAuspicious: true, desc: 'Venus day, luxury and family joy' },
-  { value: 'Saturday', label: 'Saturday - Restricted (Avoid)', isAuspicious: false, desc: 'Saturn day, delays and cold energy' },
-  { value: 'Sunday', label: 'Sunday - Special cases only', isAuspicious: true, desc: 'Sun day, average; requires strong chart' }
+  { value: 'Saturday', label: 'Saturday - Restricted (Avoid)', isAuspicious: false, desc: 'Saturn day, delays and cold energy' }
 ];
 
 const yogaOptions = [
@@ -151,41 +173,167 @@ const karanOptions = [
 const DEFAULT_API_KEY = "";
 
 const loadingTexts = [
-  "Aligning directional parameters of Vastu Shastra...",
+  "Aligning directional parameters of Vedic Shastra...",
   "Querying cosmic positions of the Nakshatras...",
   "Analyzing interaction between Tithi and Karan...",
   "Consulting the ancient laws of Vedic Panchang...",
-  "Evaluating suitability score for your home..."
+  "Evaluating suitability score for your ceremony..."
 ];
 
+// Device Credit Limit Constants (3 credits per device per week)
+const WEEKLY_CREDIT_LIMIT = 3;
+const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
+
 export default function App() {
-  // Input State
+  // Dark / Light Theme Mode State
+  const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('vastu_muhurat_theme') as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    if (themeMode === 'light') {
+      document.body.classList.add('light-theme');
+    } else {
+      document.body.classList.remove('light-theme');
+    }
+    localStorage.setItem('vastu_muhurat_theme', themeMode);
+  }, [themeMode]);
+
+  // App Mode State: 'standard' (5 Best Days Forecast) vs 'predict_day' (Single Date Auto-Fetch)
+  const [appMode, setAppMode] = useState<'standard' | 'predict_day'>('standard');
+
+  // Astrologer Profile Modal State (Initially Open Every Time on page load)
+  const [showProfileModal, setShowProfileModal] = useState(true);
+
+  // Device Credits State (3 predictions per device per week)
+  const [usedCredits, setUsedCredits] = useState<number>(() => {
+    const storedUsed = localStorage.getItem('muhurt_credits_used');
+    const storedTime = localStorage.getItem('muhurt_credits_timestamp');
+    const now = Date.now();
+
+    if (!storedTime || !storedUsed) {
+      localStorage.setItem('muhurt_credits_timestamp', now.toString());
+      localStorage.setItem('muhurt_credits_used', '0');
+      return 0;
+    }
+
+    const startTime = parseInt(storedTime, 10);
+    if (now - startTime >= WEEK_IN_MS) {
+      // 7 days passed -> auto reset credits
+      localStorage.setItem('muhurt_credits_timestamp', now.toString());
+      localStorage.setItem('muhurt_credits_used', '0');
+      return 0;
+    }
+
+    return parseInt(storedUsed, 10);
+  });
+
+  const remainingCredits = Math.max(0, WEEKLY_CREDIT_LIMIT - usedCredits);
+
+  const getDaysUntilReset = () => {
+    const storedTime = localStorage.getItem('muhurt_credits_timestamp');
+    if (!storedTime) return 7;
+    const startTime = parseInt(storedTime, 10);
+    const msLeft = WEEK_IN_MS - (Date.now() - startTime);
+    const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
+    return Math.max(1, daysLeft);
+  };
+
+  const consumeCredit = () => {
+    const newUsed = usedCredits + 1;
+    setUsedCredits(newUsed);
+    localStorage.setItem('muhurt_credits_used', newUsed.toString());
+  };
+
+  // Top Popups State
+  const [showMuhurtMenu, setShowMuhurtMenu] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+
+  // Muhurt Type Selection State
+  const [selectedMuhurtId, setSelectedMuhurtId] = useState<number>(1);
+  const selectedMuhurt = ALL_MUHURTS.find(m => m.id === selectedMuhurtId) || ALL_MUHURTS[0];
+  const selectedMuhurtRules = getMuhurtRules(selectedMuhurt.id);
+
+  // Dropdown Filtering Toggle State (true = show only selected options for active Muhurt)
+  const [filterOnlySelected, setFilterOnlySelected] = useState<boolean>(true);
+
+  // Input State: Custom Start and End Date
   const [startDate, setStartDate] = useState<string>(() => {
     const today = new Date();
     return today.toISOString().split('T')[0];
   });
-  const [selectedTithiNum, setSelectedTithiNum] = useState('2');
+
+  const [endDate, setEndDate] = useState<string>(() => {
+    const today = new Date();
+    const nextYear = new Date(today.setFullYear(today.getFullYear() + 1));
+    return nextYear.toISOString().split('T')[0];
+  });
+
+  const [selectedTithiNum, setSelectedTithiNum] = useState('5');
   const [selectedTithiPaksha, setSelectedTithiPaksha] = useState('Shukla');
   const selectedTithi = getFullTithiString(selectedTithiNum, selectedTithiPaksha);
   const [selectedNakshatra, setSelectedNakshatra] = useState(nakshatraOptions[0].value);
-  const [selectedVaar, setSelectedVaar] = useState(vaarOptions[0].value);
-  const [selectedYoga, setSelectedYoga] = useState(yogaOptions[0].value);
+  const [selectedVaar, setSelectedVaar] = useState(vaarOptions[1].value); // Monday
+  const [selectedYoga, setSelectedYoga] = useState(yogaOptions[1].value);
   const [selectedKaran, setSelectedKaran] = useState(karanOptions[0].value);
 
-  // App & Device state
-  const [credits, setCredits] = useState<number>(() => {
-    const saved = localStorage.getItem('vastu_muhurat_credits');
-    if (saved === null) return 3;
-    const parsed = parseInt(saved, 10);
-    if (isNaN(parsed) || parsed > 3) return 3;
-    return parsed;
-  });
-
-  const [apiKey, setApiKey] = useState<string>(() => {
+  // API Key State
+  const [apiKey] = useState<string>(() => {
     const envKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (envKey) return envKey;
     return localStorage.getItem('vastu_muhurat_api_key') || DEFAULT_API_KEY;
   });
+
+  // Dynamically Filtered Options Lists
+  const availableTithis = filterOnlySelected 
+    ? filterTithis(selectedMuhurtId, selectedTithiPaksha, tithiNumbers)
+    : tithiNumbers;
+
+  const availableNakshatras = filterOnlySelected 
+    ? filterNakshatras(selectedMuhurtId, nakshatraOptions)
+    : nakshatraOptions;
+
+  const availableVaars = filterOnlySelected 
+    ? filterVaars(selectedMuhurtId, vaarOptions)
+    : vaarOptions;
+
+  const availableYogas = filterOnlySelected 
+    ? filterYogas(selectedMuhurtId, yogaOptions)
+    : yogaOptions;
+
+  const availableKarans = filterOnlySelected 
+    ? filterKarans(selectedMuhurtId, karanOptions)
+    : karanOptions;
+
+  // Auto-adjust selected values if currently selected item is not in filtered options list
+  useEffect(() => {
+    if (filterOnlySelected) {
+      const validTithis = filterTithis(selectedMuhurtId, selectedTithiPaksha, tithiNumbers);
+      if (validTithis.length > 0 && !validTithis.some(t => t.value === selectedTithiNum)) {
+        setSelectedTithiNum(validTithis[0].value);
+      }
+
+      const validNakshatras = filterNakshatras(selectedMuhurtId, nakshatraOptions);
+      if (validNakshatras.length > 0 && !validNakshatras.some(n => n.value === selectedNakshatra)) {
+        setSelectedNakshatra(validNakshatras[0].value);
+      }
+
+      const validVaars = filterVaars(selectedMuhurtId, vaarOptions);
+      if (validVaars.length > 0 && !validVaars.some(v => v.value === selectedVaar)) {
+        setSelectedVaar(validVaars[0].value);
+      }
+
+      const validYogas = filterYogas(selectedMuhurtId, yogaOptions);
+      if (validYogas.length > 0 && !validYogas.some(y => y.value === selectedYoga)) {
+        setSelectedYoga(validYogas[0].value);
+      }
+
+      const validKarans = filterKarans(selectedMuhurtId, karanOptions);
+      if (validKarans.length > 0 && !validKarans.some(k => k.value === selectedKaran)) {
+        setSelectedKaran(validKarans[0].value);
+      }
+    }
+  }, [selectedMuhurtId, selectedTithiPaksha, filterOnlySelected]);
 
   // Predictions state
   const [isLoading, setIsLoading] = useState(false);
@@ -195,10 +343,6 @@ export default function App() {
   const [predictionMode, setPredictionMode] = useState<'single' | 'multi'>('single');
   const [multiResult, setMultiResult] = useState<Best5DaysPredictionResult | null>(null);
   const [activeMultiTab, setActiveMultiTab] = useState<string>('overview');
-
-  // Modals state
-  const [showDevPanel, setShowDevPanel] = useState(false);
-  const [tempKey, setTempKey] = useState(apiKey);
 
   // Loading text rotation
   useEffect(() => {
@@ -211,9 +355,9 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isLoading]);
 
-  const handlePredict = async () => {
-    if (credits <= 0) {
-      setErrorMsg("You have run out of prediction credits on this device.");
+  const triggerSinglePrediction = async () => {
+    if (remainingCredits <= 0) {
+      setErrorMsg(`Device credit limit reached: You have used all ${WEEKLY_CREDIT_LIMIT} weekly prediction credits for this device. Your credits will automatically reset in ${getDaysUntilReset()} day(s). For direct consultation, please contact Astrologer Yashesh Joshi at +91 99248 48727.`);
       return;
     }
 
@@ -224,6 +368,9 @@ export default function App() {
     setPredictionMode('single');
 
     const input: MuhuratInput = {
+      muhurtTypeId: selectedMuhurt.id,
+      muhurtNameEn: selectedMuhurt.nameEn,
+      muhurtNameGu: selectedMuhurt.nameGu,
       tithi: selectedTithi,
       nakshatra: selectedNakshatra,
       vaar: selectedVaar,
@@ -234,11 +381,7 @@ export default function App() {
     try {
       const prediction = await fetchVastuPrediction(input, apiKey);
       setResult(prediction);
-      
-      // Deduct credit
-      const newCredits = credits - 1;
-      setCredits(newCredits);
-      localStorage.setItem('vastu_muhurat_credits', newCredits.toString());
+      consumeCredit();
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err?.message || "Failed to contact the astrological server. Please check your internet connection and API key.");
@@ -247,9 +390,52 @@ export default function App() {
     }
   };
 
+  const triggerDateAutoPrediction = async (targetDateStr: string) => {
+    if (remainingCredits <= 0) {
+      setErrorMsg(`Device credit limit reached: You have used all ${WEEKLY_CREDIT_LIMIT} weekly prediction credits for this device. Your credits will automatically reset in ${getDaysUntilReset()} day(s). For direct consultation, please contact Astrologer Yashesh Joshi at +91 99248 48727.`);
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMsg(null);
+    setResult(null);
+    setMultiResult(null);
+    setPredictionMode('single');
+
+    const input: MuhuratInput = {
+      muhurtTypeId: selectedMuhurt.id,
+      muhurtNameEn: selectedMuhurt.nameEn,
+      muhurtNameGu: selectedMuhurt.nameGu,
+      tithi: selectedTithi,
+      nakshatra: selectedNakshatra,
+      vaar: selectedVaar,
+      yoga: selectedYoga,
+      karan: selectedKaran
+    };
+
+    try {
+      const prediction = await fetchVastuPredictionForDate(targetDateStr, input, apiKey);
+      setResult(prediction);
+      consumeCredit();
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err?.message || "Failed to contact the astrological server. Please check your internet connection and API key.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePredict = async () => {
+    if (appMode === 'predict_day') {
+      await triggerDateAutoPrediction(startDate);
+    } else {
+      await triggerSinglePrediction();
+    }
+  };
+
   const handlePredict5Days = async () => {
-    if (credits <= 0) {
-      setErrorMsg("You have run out of prediction credits on this device.");
+    if (remainingCredits <= 0) {
+      setErrorMsg(`Device credit limit reached: You have used all ${WEEKLY_CREDIT_LIMIT} weekly prediction credits for this device. Your credits will automatically reset in ${getDaysUntilReset()} day(s). For direct consultation, please contact Astrologer Yashesh Joshi at +91 99248 48727.`);
       return;
     }
 
@@ -261,6 +447,9 @@ export default function App() {
     setActiveMultiTab('overview');
 
     const input: MuhuratInput = {
+      muhurtTypeId: selectedMuhurt.id,
+      muhurtNameEn: selectedMuhurt.nameEn,
+      muhurtNameGu: selectedMuhurt.nameGu,
       tithi: selectedTithi,
       nakshatra: selectedNakshatra,
       vaar: selectedVaar,
@@ -269,31 +458,15 @@ export default function App() {
     };
 
     try {
-      const forecast = await fetchVastuBest5DaysPrediction(startDate, input, apiKey);
+      const forecast = await fetchVastuBest5DaysPrediction(startDate, endDate, input, apiKey);
       setMultiResult(forecast);
-      
-      // Deduct credit
-      const newCredits = credits - 1;
-      setCredits(newCredits);
-      localStorage.setItem('vastu_muhurat_credits', newCredits.toString());
+      consumeCredit();
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err?.message || "Failed to contact the astrological server. Please check your internet connection and API key.");
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleSaveSettings = () => {
-    setApiKey(tempKey);
-    localStorage.setItem('vastu_muhurat_api_key', tempKey);
-    setShowDevPanel(false);
-  };
-
-  const handleResetCredits = () => {
-    setCredits(3);
-    localStorage.setItem('vastu_muhurat_credits', '3');
-    setErrorMsg(null);
   };
 
   // Get status metadata of current inputs
@@ -312,6 +485,12 @@ export default function App() {
   return (
     <>
       <div className="stars-overlay"></div>
+
+      {/* Astrologer Profile Modal Popup (Initially Open Every Time) */}
+      <ProfileModal 
+        isOpen={showProfileModal} 
+        onClose={() => setShowProfileModal(false)} 
+      />
       
       <div className="app-container">
         
@@ -327,27 +506,230 @@ export default function App() {
         
         {/* Header */}
         <header className="app-header">
+          {/* Header Top Right Controls */}
+          <div className="header-top-actions">
+            
+            {/* Consultant Profile Icon Button */}
+            <button 
+              type="button" 
+              className="icon-action-btn"
+              onClick={() => setShowProfileModal(true)}
+              title="Astrologer Profile Card"
+              aria-label="Astrologer Profile"
+            >
+              <User size={20} />
+            </button>
+
+            {/* Settings Icon Button */}
+            <div style={{ position: 'relative' }}>
+              <button 
+                type="button" 
+                className="icon-action-btn"
+                onClick={() => {
+                  setShowSettingsMenu(prev => !prev);
+                  setShowMuhurtMenu(false);
+                }}
+                title="Settings & Options"
+                aria-label="Settings Menu"
+              >
+                <Settings size={20} />
+              </button>
+
+              {/* Settings Dropdown Popup Menu */}
+              {showSettingsMenu && (
+                <>
+                  <div 
+                    style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 190 }}
+                    onClick={() => setShowSettingsMenu(false)}
+                  />
+                  <div className="muhurt-popup-menu" style={{ width: '320px' }}>
+                    <div className="muhurt-menu-header">
+                      Settings & Options
+                    </div>
+
+                    <div className="muhurt-menu-list" style={{ padding: '8px' }}>
+                      
+                      {/* Device Credits Info inside Settings */}
+                      <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--gold-primary)', marginBottom: '4px', fontWeight: 600 }}>
+                          DEVICE WEEKLY CREDITS
+                        </div>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                          {remainingCredits} / {WEEKLY_CREDIT_LIMIT} Predictions Remaining
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          Resets in {getDaysUntilReset()} day(s)
+                        </div>
+                      </div>
+
+                      {/* Theme Toggle */}
+                      <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>
+                          APPEARANCE THEME
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className={`muhurt-menu-item ${themeMode === 'dark' ? 'active' : ''}`}
+                            style={{ flex: 1, justifyContent: 'center', padding: '6px 10px', fontSize: '0.82rem' }}
+                            onClick={() => setThemeMode('dark')}
+                          >
+                            <Moon size={14} style={{ marginRight: '4px' }} /> Dark Mode
+                          </button>
+                          <button
+                            type="button"
+                            className={`muhurt-menu-item ${themeMode === 'light' ? 'active' : ''}`}
+                            style={{ flex: 1, justifyContent: 'center', padding: '6px 10px', fontSize: '0.82rem' }}
+                            onClick={() => setThemeMode('light')}
+                          >
+                            <Sun size={14} style={{ marginRight: '4px' }} /> Light Mode
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Prediction Mode Switcher */}
+                      <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>
+                          PREDICTION MODE
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <button
+                            type="button"
+                            className={`muhurt-menu-item ${appMode === 'standard' ? 'active' : ''}`}
+                            onClick={() => {
+                              setAppMode('standard');
+                              setShowSettingsMenu(false);
+                            }}
+                          >
+                            <span>Standard Mode (5-Day Forecast & Manual Panchang)</span>
+                            {appMode === 'standard' && <Check size={16} color="#ffd700" />}
+                          </button>
+                          <button
+                            type="button"
+                            className={`muhurt-menu-item ${appMode === 'predict_day' ? 'active' : ''}`}
+                            onClick={() => {
+                              setAppMode('predict_day');
+                              setShowSettingsMenu(false);
+                            }}
+                          >
+                            <span>Predict Specific Date (Single Date Mode)</span>
+                            {appMode === 'predict_day' && <Check size={16} color="#ffd700" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Options Filter Switch */}
+                      <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>
+                          OPTIONS FILTER
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={filterOnlySelected}
+                            onChange={(e) => setFilterOnlySelected(e.target.checked)}
+                            style={{ accentColor: '#ffd700', width: '16px', height: '16px', cursor: 'pointer' }}
+                          />
+                          <span>Display only Muhurt-approved options</span>
+                        </label>
+                      </div>
+
+                      {/* Favorable Limbs List */}
+                      <div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--gold-primary)', marginBottom: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', textAlign: 'left' }}>
+                          <Filter size={12} /> FAVORABLE DATA FOR {selectedMuhurt.nameEn.toUpperCase()}
+                        </div>
+                        <div style={{ background: 'rgba(255,215,0,0.05)', border: '1px solid rgba(255,215,0,0.15)', borderRadius: '8px', padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text-secondary)', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div>• Shukla Tithis: {selectedMuhurtRules.tithiShukla.map(t => t.name).join(', ') || 'None'}</div>
+                          <div>• Krishna Tithis: {selectedMuhurtRules.tithiKrishna.map(t => t.name).join(', ') || 'None'}</div>
+                          <div>• Nakshatras ({selectedMuhurtRules.nakshatra.length}): {selectedMuhurtRules.nakshatra.map(n => n.name).join(', ') || 'None'}</div>
+                          <div>• Weekdays ({selectedMuhurtRules.vaar.length}): {selectedMuhurtRules.vaar.map(v => v.name).join(', ') || 'None'}</div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 3-Dot Menu Button */}
+            <div style={{ position: 'relative' }}>
+              <button 
+                type="button" 
+                className="icon-action-btn"
+                onClick={() => {
+                  setShowMuhurtMenu(prev => !prev);
+                  setShowSettingsMenu(false);
+                }}
+                title="Select Muhurt Ceremony"
+                aria-label="Muhurt Options Menu"
+              >
+                <MoreVertical size={20} />
+              </button>
+
+              {/* Ceremony Popup Menu Dropdown */}
+              {showMuhurtMenu && (
+                <>
+                  <div 
+                    style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 190 }}
+                    onClick={() => setShowMuhurtMenu(false)}
+                  />
+                  <div className="muhurt-popup-menu">
+                    <div className="muhurt-menu-header">Select Muhurt Ceremony</div>
+                    <div className="muhurt-menu-list">
+                      {ALL_MUHURTS.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className={`muhurt-menu-item ${selectedMuhurtId === m.id ? 'active' : ''}`}
+                          onClick={() => {
+                            setSelectedMuhurtId(m.id);
+                            setShowMuhurtMenu(false);
+                          }}
+                        >
+                          <span>{m.nameGu} — {m.nameEn}</span>
+                          {selectedMuhurtId === m.id && <Check size={16} color="#ffd700" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+          </div>
+
           <div className="logo-icon">
             <Compass size={40} className="placeholder-icon" style={{ animationDuration: '30s' }} />
           </div>
-          <h1 className="app-title">Vastu Muhurat Predictor</h1>
+          <h1 className="app-title">Vedic Muhurt Predictor</h1>
           <p className="app-subtitle">
-            Calculate and predict auspicious astrological alignment for house construction and Griha Pravesh using classical Indian Vedic Astrology.
+            Calculate and predict auspicious astrological alignment for Griha Pravesha, Udgatana, Vidyarambha, Vastu Shanti, and all 9 sacred ceremonies using classical Indian Vedic Astrology.
           </p>
-        </header>
 
-        {/* Device Credits Indicator */}
-        <div className="credits-bar">
-          <div className="credits-info">
-            <Star size={16} color="#ffd700" />
-            <span>Device Credits Remaining: <span className="credits-count">{credits} / 3</span></span>
+          {/* Device Credits Indicator Badge */}
+          <div className="credits-bar">
+            <div className="credits-info">
+              <Sparkles size={16} color="var(--gold-primary)" />
+              <span className="credits-prefix-desktop">Device Weekly Limit: </span>
+              <span className="credits-prefix-mobile">Weekly Limit: </span>
+              <span className="credits-count">
+                {remainingCredits} / {WEEKLY_CREDIT_LIMIT} <span className="credits-word">Credits </span>Remaining
+              </span>
+            </div>
+            <div className="credits-dots">
+              {[1, 2, 3].map((i) => (
+                <div 
+                  key={i} 
+                  className={`dot ${i <= remainingCredits ? 'active' : ''}`}
+                  title={`Credit ${i} of ${WEEKLY_CREDIT_LIMIT}`}
+                />
+              ))}
+            </div>
           </div>
-          <div className="credits-dots">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className={`dot ${credits >= i + 1 ? 'active' : ''}`}></div>
-            ))}
-          </div>
-        </div>
+
+        </header>
 
         {/* Main Interface Grid */}
         <main className="main-grid">
@@ -355,222 +737,226 @@ export default function App() {
           {/* Form Side */}
           <section className="predictor-card" aria-labelledby="form-section-title">
             <h2 id="form-section-title" className="section-title">
-              <Sparkles size={20} /> Select Panchang Limbs
+              <Sparkles size={20} /> {selectedMuhurt.nameEn} ({selectedMuhurt.nameGu}) Muhurt Predict
             </h2>
-            
-            {/* Start Date */}
-            <div className="input-group">
-              <label htmlFor="start-date-input" className="input-label">
-                Start Calendar Date
-              </label>
-              <input 
-                id="start-date-input"
-                type="date" 
-                className="text-input-field" 
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                style={{ marginTop: '0' }}
-              />
-              <p className="rule-highlight">
-                <strong>Reference Date:</strong> Reference starting calendar date to find the 5 best Vastu Muhurats in the next 1 year.
-              </p>
-            </div>
 
-            {/* Tithi */}
-            <div className="input-group">
-              <label htmlFor="tithi-select" className="input-label">
-                Tithi (Lunar Day)
-                <span className="input-info-hint">
-                  {checkTithiAuspicious(selectedTithiNum, selectedTithiPaksha) ? "✓ Good" : "✗ Avoid"}
-                </span>
-              </label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div className="select-wrapper">
-                  <select 
-                    id="tithi-select"
-                    className="custom-select"
-                    value={selectedTithiNum}
-                    onChange={(e) => setSelectedTithiNum(e.target.value)}
-                  >
-                    {tithiNumbers.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+            {/* Prediction Mode Date Window */}
+            {appMode === 'predict_day' ? (
+              /* Single Date Auto-Fetch Mode */
+              <div className="input-group">
+                <VedicDatePicker
+                  label={`Target Date for ${selectedMuhurt.nameEn} Auto-Panchang Predict`}
+                  value={startDate}
+                  onChange={(newDate) => setStartDate(newDate)}
+                />
+                <p className="rule-highlight" style={{ marginTop: '10px' }}>
+                  <strong>Single Date Mode:</strong> Selecting a date will automatically calculate the complete Indian Panchang (Tithi, Nakshatra, Vaar, Yoga, Karan) and predict suitability percentage for {selectedMuhurt.nameEn}.
+                </p>
+              </div>
+            ) : (
+              /* Standard Date Range Window */
+              <div className="input-group">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <VedicDatePicker
+                    label="Start Date"
+                    value={startDate}
+                    onChange={(newDate) => setStartDate(newDate)}
+                  />
+                  <VedicDatePicker
+                    label="End Date"
+                    value={endDate}
+                    onChange={(newDate) => setEndDate(newDate)}
+                    alignRight={true}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Standard Mode Panchang Limb Selects (Hidden in Single Date Mode) */}
+            {appMode === 'standard' && (
+              <>
+                {/* Tithi */}
+                <div className="input-group">
+                  <label htmlFor="tithi-select" className="input-label">
+                    Tithi (Lunar Day)
+                    <span className="input-info-hint">
+                      {checkTithiAuspicious(selectedTithiNum, selectedTithiPaksha) ? "✓ Good" : "✗ Avoid"}
+                    </span>
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className="select-wrapper">
+                      <select 
+                        id="tithi-select"
+                        className="custom-select"
+                        value={selectedTithiNum}
+                        onChange={(e) => setSelectedTithiNum(e.target.value)}
+                      >
+                        {availableTithis.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {selectedTithiNum !== 'Purnima' && selectedTithiNum !== 'Amavasya' && (
+                      <div className="select-wrapper">
+                        <select 
+                          id="tithi-paksha-select"
+                          className="custom-select"
+                          value={selectedTithiPaksha}
+                          onChange={(e) => setSelectedTithiPaksha(e.target.value)}
+                          aria-label="Select Paksha"
+                        >
+                          {pakshaOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {selectedTithiNum !== 'Purnima' && selectedTithiNum !== 'Amavasya' && (
+                {/* Nakshatra */}
+                <div className="input-group">
+                  <label htmlFor="nakshatra-select" className="input-label">
+                    Nakshatra (Lunar Mansion)
+                    <span className="input-info-hint">
+                      {currentNakshatraObj?.isAuspicious ? "✓ Good" : "✗ Avoid"}
+                    </span>
+                  </label>
                   <div className="select-wrapper">
                     <select 
-                      id="tithi-paksha-select"
+                      id="nakshatra-select"
                       className="custom-select"
-                      value={selectedTithiPaksha}
-                      onChange={(e) => setSelectedTithiPaksha(e.target.value)}
-                      aria-label="Select Paksha"
+                      value={selectedNakshatra}
+                      onChange={(e) => setSelectedNakshatra(e.target.value)}
                     >
-                      {pakshaOptions.map(option => (
+                      {availableNakshatras.map(option => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
                       ))}
                     </select>
                   </div>
-                )}
-              </div>
-              <p className="rule-highlight">
-                <strong>Astrology Rule:</strong> Dwitiya, Tritiya, Panchami, Saptami, Dashami, Ekadashi, Dwadashi, and Shukla Trayodashi are favored. Avoid Rikta (4, 9, 14) and Amavasya.
-              </p>
-            </div>
+                </div>
 
-            {/* Nakshatra */}
-            <div className="input-group">
-              <label htmlFor="nakshatra-select" className="input-label">
-                Nakshatra (Lunar Mansion)
-                <span className="input-info-hint">
-                  {currentNakshatraObj?.isAuspicious ? "✓ Good" : "✗ Avoid"}
-                </span>
-              </label>
-              <div className="select-wrapper">
-                <select 
-                  id="nakshatra-select"
-                  className="custom-select"
-                  value={selectedNakshatra}
-                  onChange={(e) => setSelectedNakshatra(e.target.value)}
-                >
-                  {nakshatraOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <p className="rule-highlight">
-                <strong>Astrology Rule:</strong> Fixed (Sthira) stars (Rohini, Uttaras) & Gentle (Mridu) stars (Anuradha, Chitra, Revati, Dhanishta, Shatabhisha) bring long-term stability.
-              </p>
-            </div>
+                {/* Vaar */}
+                <div className="input-group">
+                  <label htmlFor="vaar-select" className="input-label">
+                    Vaar (Weekday)
+                    <span className="input-info-hint">
+                      {currentVaarObj?.isAuspicious ? "✓ Good" : "✗ Avoid"}
+                    </span>
+                  </label>
+                  <div className="select-wrapper">
+                    <select 
+                      id="vaar-select"
+                      className="custom-select"
+                      value={selectedVaar}
+                      onChange={(e) => setSelectedVaar(e.target.value)}
+                    >
+                      {availableVaars.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-            {/* Vaar */}
-            <div className="input-group">
-              <label htmlFor="vaar-select" className="input-label">
-                Vaar (Weekday)
-                <span className="input-info-hint">
-                  {currentVaarObj?.isAuspicious ? "✓ Good" : "✗ Avoid"}
-                </span>
-              </label>
-              <div className="select-wrapper">
-                <select 
-                  id="vaar-select"
-                  className="custom-select"
-                  value={selectedVaar}
-                  onChange={(e) => setSelectedVaar(e.target.value)}
-                >
-                  {vaarOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <p className="rule-highlight">
-                <strong>Astrology Rule:</strong> Monday, Wednesday, Thursday, and Friday are highly preferred. Strictly restrict Tuesdays and Saturdays.
-              </p>
-            </div>
+                {/* Yoga */}
+                <div className="input-group">
+                  <label htmlFor="yoga-select" className="input-label">
+                    Yoga (Luni-Solar Combo)
+                    <span className="input-info-hint">
+                      {currentYogaObj?.isAuspicious ? "✓ Good" : "✗ Avoid"}
+                    </span>
+                  </label>
+                  <div className="select-wrapper">
+                    <select 
+                      id="yoga-select"
+                      className="custom-select"
+                      value={selectedYoga}
+                      onChange={(e) => setSelectedYoga(e.target.value)}
+                    >
+                      {availableYogas.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-            {/* Yoga */}
-            <div className="input-group">
-              <label htmlFor="yoga-select" className="input-label">
-                Yoga (Luni-Solar Combo)
-                <span className="input-info-hint">
-                  {currentYogaObj?.isAuspicious ? "✓ Good" : "✗ Avoid"}
-                </span>
-              </label>
-              <div className="select-wrapper">
-                <select 
-                  id="yoga-select"
-                  className="custom-select"
-                  value={selectedYoga}
-                  onChange={(e) => setSelectedYoga(e.target.value)}
-                >
-                  {yogaOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <p className="rule-highlight">
-                <strong>Astrology Rule:</strong> Siddhi, Amrita, Shubha, Shukla, Brahma, and Aindra enhance prosperity. Avoid malefic Vyatipata, Vaidhriti, and Visha.
-              </p>
-            </div>
-
-            {/* Karan */}
-            <div className="input-group">
-              <label htmlFor="karan-select" className="input-label">
-                Karan (Half of Tithi)
-                <span className="input-info-hint">
-                  {currentKaranObj?.isAuspicious ? "✓ Good" : "✗ Avoid"}
-                </span>
-              </label>
-              <div className="select-wrapper">
-                <select 
-                  id="karan-select"
-                  className="custom-select"
-                  value={selectedKaran}
-                  onChange={(e) => setSelectedKaran(e.target.value)}
-                >
-                  {karanOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <p className="rule-highlight">
-                <strong>Astrology Rule:</strong> Benefic Karans like Bava, Balava, Kaulava, Taitila, Garaja, and Vanija are suitable. Vishti (Bhadra Karan) must be strictly avoided.
-              </p>
-            </div>
-
-            {/* Predict Trigger buttons */}
-            <div className="predict-buttons-container">
-              <button 
-                type="button" 
-                className="predict-button"
-                onClick={handlePredict}
-                disabled={isLoading || credits <= 0}
-              >
-                <Compass size={20} />
-                {isLoading && predictionMode === 'single' ? "Consulting Stars..." : "Predict Day"}
-              </button>
-
-              <button 
-                type="button" 
-                className="predict-button secondary"
-                onClick={handlePredict5Days}
-                disabled={isLoading || credits <= 0}
-              >
-                <Sparkles size={20} style={{ color: 'inherit' }} />
-                {isLoading && predictionMode === 'multi' ? "Generating Forecast..." : "Predict 5 Days"}
-              </button>
-            </div>
-
-            {/* Credits Exhausted Alert */}
-            {credits <= 0 && (
-              <div className="credit-exhausted-card">
-                <h3 className="credit-exhausted-title">
-                  <AlertTriangle size={18} /> Credit Limit Reached
-                </h3>
-                <p className="credit-exhausted-desc">
-                  This device has run out of its 3 free credits. If you are testing the app, please use the configuration settings icon in the bottom-right corner to reset your credits.
-                </p>
-              </div>
+                {/* Karan */}
+                <div className="input-group">
+                  <label htmlFor="karan-select" className="input-label">
+                    Karan (Half of Tithi)
+                    <span className="input-info-hint">
+                      {currentKaranObj?.isAuspicious ? "✓ Good" : "✗ Avoid"}
+                    </span>
+                  </label>
+                  <div className="select-wrapper">
+                    <select 
+                      id="karan-select"
+                      className="custom-select"
+                      value={selectedKaran}
+                      onChange={(e) => setSelectedKaran(e.target.value)}
+                    >
+                      {availableKarans.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </>
             )}
+
+            {/* Predict Trigger button */}
+            <div className="predict-buttons-container" style={{ gridTemplateColumns: '1fr' }}>
+              {appMode === 'predict_day' ? (
+                <button 
+                  type="button" 
+                  className="predict-button"
+                  onClick={handlePredict}
+                  disabled={isLoading || remainingCredits <= 0}
+                >
+                  <Compass size={20} />
+                  {remainingCredits <= 0
+                    ? `Device Limit Reached (0/${WEEKLY_CREDIT_LIMIT} Credits)`
+                    : isLoading && predictionMode === 'single'
+                    ? "Consulting Stars..."
+                    : `Predict ${selectedMuhurt.nameEn} for ${startDate}`
+                  }
+                </button>
+              ) : (
+                <button 
+                  type="button" 
+                  className="predict-button"
+                  onClick={handlePredict5Days}
+                  disabled={isLoading || remainingCredits <= 0}
+                >
+                  <Sparkles size={20} style={{ color: 'inherit' }} />
+                  {remainingCredits <= 0
+                    ? `Device Limit Reached (0/${WEEKLY_CREDIT_LIMIT} Credits)`
+                    : isLoading && predictionMode === 'multi'
+                    ? "Generating Forecast..."
+                    : `Predict 5 Best ${selectedMuhurt.nameEn} Days`
+                  }
+                </button>
+              )}
+            </div>
           </section>
 
           {/* Results Side */}
           <section className="predictor-card" aria-labelledby="results-section-title">
             <h2 id="results-section-title" className="section-title">
-              <Home size={20} /> Vastu Suitability Report
+              <Home size={20} /> {selectedMuhurt.nameEn} ({selectedMuhurt.nameGu}) Report
             </h2>
 
             {/* Loading state */}
@@ -581,27 +967,60 @@ export default function App() {
               </div>
             )}
 
-            {/* Error Message */}
+            {/* Error Message / Device Credit Limit Notice */}
             {errorMsg && !isLoading && (
               <div className="credit-exhausted-card" style={{ background: 'rgba(239, 68, 68, 0.05)' }}>
                 <h3 className="credit-exhausted-title" style={{ color: '#ef4444' }}>
-                  <AlertTriangle size={18} /> Prediction Error
+                  <ShieldAlert size={20} /> Prediction Notice
                 </h3>
-                <p className="credit-exhausted-desc" style={{ color: '#fca5a5' }}>
+                <p className="credit-exhausted-desc" style={{ color: 'var(--text-primary)', marginBottom: '12px' }}>
                   {errorMsg}
                 </p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
+                  <a 
+                    href="tel:+919924848727"
+                    className="dev-btn"
+                    style={{ textDecoration: 'none', padding: '8px 16px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <PhoneCall size={14} /> Call Astrologer Yashesh Joshi (+91 99248 48727)
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* Device Credit Limit Exhausted Banner */}
+            {remainingCredits <= 0 && !errorMsg && !isLoading && (
+              <div className="credit-exhausted-card">
+                <h3 className="credit-exhausted-title">
+                  <ShieldAlert size={20} /> Weekly Device Limit Reached (3/3 Credits Used)
+                </h3>
+                <p className="credit-exhausted-desc">
+                  You have reached the maximum 3 predictions allowed per device for this week. Your device credits will automatically reset in <strong>{getDaysUntilReset()} day(s)</strong>.
+                </p>
+                <div style={{ marginTop: '16px', borderTop: '1px solid rgba(239, 68, 68, 0.2)', paddingTop: '14px' }}>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--gold-primary)', margin: '0 0 10px', fontWeight: 600 }}>
+                    For personal horoscope analysis, custom muhurt calculations, or unlimited access:
+                  </p>
+                  <a 
+                    href="tel:+919924848727"
+                    className="predict-button"
+                    style={{ textDecoration: 'none', padding: '10px 18px', fontSize: '0.9rem' }}
+                  >
+                    <PhoneCall size={16} /> Contact Astrologer Yashesh Joshi (+91 99248 48727)
+                  </a>
+                </div>
               </div>
             )}
 
             {/* No result yet */}
-            {!isLoading && !result && !multiResult && !errorMsg && (
+            {!isLoading && !result && !multiResult && !errorMsg && remainingCredits > 0 && (
               <div className="results-placeholder">
                 <Compass size={64} className="placeholder-icon" />
-                <p style={{ fontFamily: 'var(--heading-font)', fontSize: '1.2rem', color: '#ffd700', marginBottom: '8px' }}>
+                <p style={{ fontFamily: 'var(--heading-font)', fontSize: '1.2rem', color: 'var(--gold-primary)', marginBottom: '8px' }}>
                   Awaiting Stellar Input
                 </p>
                 <p style={{ fontSize: '0.85rem', maxWidth: '280px' }}>
-                  Select the desired limbs of the Panchang on the left, then click predict to generate the Vastu reading.
+                  Select your Panchang parameters and click Predict to view detailed {selectedMuhurt.nameEn} ({selectedMuhurt.nameGu}) astrological suitability scores, limb analysis, and Vedic remedies.
                 </p>
               </div>
             )}
@@ -634,6 +1053,11 @@ export default function App() {
                       <span className="score-label">Score</span>
                     </div>
                   </div>
+                  {result.date && (
+                    <div style={{ fontSize: '0.9rem', color: 'var(--gold-secondary)', fontWeight: 700, marginBottom: '4px' }}>
+                      Date: {result.date}
+                    </div>
+                  )}
                   <div className="verdict-badge">{result.verdict}</div>
                   <p className="verdict-desc">{result.overallAnalysis}</p>
                 </div>
@@ -645,7 +1069,7 @@ export default function App() {
                   <div className="limb-detail-item">
                     <div className="limb-detail-header">
                       <span className="limb-detail-name">Tithi (Lunar Day)</span>
-                      <span className="limb-value-badge">{selectedTithi}</span>
+                      <span className="limb-value-badge">{result.tithi || selectedTithi}</span>
                     </div>
                     <p className="limb-detail-text">{result.tithiAnalysis}</p>
                   </div>
@@ -654,7 +1078,7 @@ export default function App() {
                   <div className="limb-detail-item">
                     <div className="limb-detail-header">
                       <span className="limb-detail-name">Nakshatra</span>
-                      <span className="limb-value-badge">{selectedNakshatra}</span>
+                      <span className="limb-value-badge">{result.nakshatra || selectedNakshatra}</span>
                     </div>
                     <p className="limb-detail-text">{result.nakshatraAnalysis}</p>
                   </div>
@@ -663,7 +1087,7 @@ export default function App() {
                   <div className="limb-detail-item">
                     <div className="limb-detail-header">
                       <span className="limb-detail-name">Vaar (Weekday)</span>
-                      <span className="limb-value-badge">{selectedVaar}</span>
+                      <span className="limb-value-badge">{result.vaar || selectedVaar}</span>
                     </div>
                     <p className="limb-detail-text">{result.vaarAnalysis}</p>
                   </div>
@@ -672,7 +1096,7 @@ export default function App() {
                   <div className="limb-detail-item">
                     <div className="limb-detail-header">
                       <span className="limb-detail-name">Yoga</span>
-                      <span className="limb-value-badge">{selectedYoga}</span>
+                      <span className="limb-value-badge">{result.yoga || selectedYoga}</span>
                     </div>
                     <p className="limb-detail-text">{result.yogaAnalysis}</p>
                   </div>
@@ -681,7 +1105,7 @@ export default function App() {
                   <div className="limb-detail-item">
                     <div className="limb-detail-header">
                       <span className="limb-detail-name">Karan</span>
-                      <span className="limb-value-badge">{selectedKaran}</span>
+                      <span className="limb-value-badge">{result.karan || selectedKaran}</span>
                     </div>
                     <p className="limb-detail-text">{result.karanAnalysis}</p>
                   </div>
@@ -692,7 +1116,7 @@ export default function App() {
                 {result.remedies && result.remedies.length > 0 && (
                   <div className="remedies-section">
                     <h3 className="remedies-title">
-                      <Star size={16} /> Astrological Vastu Remedies
+                      <Star size={16} /> Astrological {selectedMuhurt.nameEn} Remedies
                     </h3>
                     <ul className="remedies-list">
                       {result.remedies.map((remedy, i) => (
@@ -736,7 +1160,7 @@ export default function App() {
                 {activeMultiTab === 'overview' && (
                   <div className="timeline-overview">
                     <p className="timeline-subtitle">
-                      Top 5 Vastu Muhurat recommendations for the next 1 year (from {startDate}):
+                      Top 5 {selectedMuhurt.nameEn} ({selectedMuhurt.nameGu}) recommendations from {startDate} to {endDate}:
                     </p>
                     <div className="timeline-list">
                       {multiResult.predictions.map((pred) => {
@@ -873,7 +1297,7 @@ export default function App() {
                       {pred.remedies && pred.remedies.length > 0 && (
                         <div className="remedies-section">
                           <h3 className="remedies-title">
-                            <Star size={16} /> Astrological Vastu Remedies
+                            <Star size={16} /> Astrological {selectedMuhurt.nameEn} Remedies
                           </h3>
                           <ul className="remedies-list">
                             {pred.remedies.map((remedy, i) => (
@@ -899,78 +1323,8 @@ export default function App() {
 
         {/* Footer info */}
         <footer style={{ marginTop: '48px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-          <p>© {new Date().getFullYear()} Vastu Astrological Engine. Built for auspicious home planning.</p>
+          <p>© {new Date().getFullYear()} Vedic Muhurt Predictor. Multi-Muhurt Astrological System.</p>
         </footer>
-
-        {/* Dev settings trigger button */}
-        <button 
-          type="button"
-          className="dev-trigger-btn"
-          onClick={() => setShowDevPanel(true)}
-          title="Developer Settings"
-          aria-label="Developer Settings"
-        >
-          <Settings size={18} />
-        </button>
-
-        {/* Developer Settings Modal */}
-        {showDevPanel && (
-          <>
-            <div className="dev-backdrop" onClick={() => setShowDevPanel(false)}></div>
-            <div className="dev-panel" role="dialog" aria-labelledby="dev-modal-title">
-              <div className="dev-title" id="dev-modal-title">
-                <span>Developer / Admin Panel</span>
-                <button type="button" className="dev-close-btn" onClick={() => setShowDevPanel(false)}>×</button>
-              </div>
-              
-              <div style={{ marginBottom: '24px' }}>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  <strong>Reset Device Credits:</strong> Reset the localStorage counter back to 3 credits for this device.
-                </p>
-                <button 
-                  type="button" 
-                  className="dev-btn"
-                  onClick={handleResetCredits}
-                >
-                  Reset Credits to 3
-                </button>
-              </div>
-
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px' }}>
-                <label className="input-label" htmlFor="dev-api-key" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
-                  <span>Gemini API Key:</span>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
-                    Configure the client-side API Key to generate predictions.
-                  </span>
-                </label>
-                <input 
-                  id="dev-api-key"
-                  type="text" 
-                  className="text-input-field" 
-                  value={tempKey}
-                  onChange={(e) => setTempKey(e.target.value)}
-                />
-              </div>
-
-              <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                <button 
-                  type="button" 
-                  style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
-                  onClick={() => setShowDevPanel(false)}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="button" 
-                  className="dev-btn"
-                  onClick={handleSaveSettings}
-                >
-                  Save Changes
-                </button>
-              </div>
-            </div>
-          </>
-        )}
 
       </div>
     </>

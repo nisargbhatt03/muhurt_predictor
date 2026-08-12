@@ -1,0 +1,68 @@
+{
+  "version": "1.0",
+  "muhurts": [
+    {
+      "id": 1,
+      "name": {
+        "gu": "ગૃહપ્રવેશ",
+        "en": "Griha Pravesha"
+      }
+    },
+    {
+      "id": 2,
+      "name": {
+        "gu": "અન્નપ્રાશન",
+        "en": "Annaprashana"
+      }
+    },
+    {
+      "id": 3,
+      "name": {
+        "gu": "કર્ણવેધ",
+        "en": "Karnavedha"
+      }
+    },
+    {
+      "id": 4,
+      "name": {
+        "gu": "ઉદ્ઘાટન",
+        "en": "Udgātana"
+      }
+    },
+    {
+      "id": 5,
+      "name": {
+        "gu": "કેશકર્તન",
+        "en": "Keshakartana"
+      }
+    },
+    {
+      "id": 6,
+      "name": {
+        "gu": "વિદ્યારંભ",
+        "en": "Vidyarambha"
+      }
+    },
+    {
+      "id": 7,
+      "name": {
+        "gu": "સીમંત",
+        "en": "Simantonnayana"
+      }
+    },
+    {
+      "id": 8,
+      "name": {
+        "gu": "ઉપનયન",
+        "en": "Upanayana"
+      }
+    },
+    {
+      "id": 9,
+      "name": {
+        "gu": "વાસ્તુશાંતિ",
+        "en": "Vastu Shanti"
+      }
+    }
+  ]
+}
