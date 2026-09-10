@@ -4,7 +4,6 @@ import {
   Compass, 
   Star, 
   Home,
-  Filter,
   Sun,
   Moon,
   MoreVertical,
@@ -12,7 +11,8 @@ import {
   Check,
   User,
   ShieldAlert,
-  PhoneCall
+  PhoneCall,
+  LogIn
 } from 'lucide-react';
 import { 
   fetchVastuPrediction, 
@@ -22,7 +22,6 @@ import {
 import type { PredictionResult, MuhuratInput, Best5DaysPredictionResult } from './gemini';
 import { 
   ALL_MUHURTS, 
-  getMuhurtRules, 
   filterTithis, 
   filterNakshatras, 
   filterVaars, 
@@ -31,6 +30,8 @@ import {
 } from './muhurtData';
 import { VedicDatePicker } from './VedicDatePicker';
 import { ProfileModal } from './ProfileModal';
+import { AuthModal } from './AuthModal';
+import type { UserAccount } from './AuthModal';
 
 // Options definitions with details
 const tithiNumbers = [
@@ -179,11 +180,6 @@ const loadingTexts = [
   "Consulting the ancient laws of Vedic Panchang...",
   "Evaluating suitability score for your ceremony..."
 ];
-
-// Device Credit Limit Constants (3 credits per device per week)
-const WEEKLY_CREDIT_LIMIT = 3;
-const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
-
 export default function App() {
   // Dark / Light Theme Mode State
   const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
@@ -199,50 +195,27 @@ export default function App() {
     localStorage.setItem('vastu_muhurat_theme', themeMode);
   }, [themeMode]);
 
-  // App Mode State: 'standard' (5 Best Days Forecast) vs 'predict_day' (Single Date Auto-Fetch)
-  const [appMode, setAppMode] = useState<'standard' | 'predict_day'>('standard');
+  // App Mode State: 'predict_date' (Single Date) vs 'predict_panchang' (Custom Limbs) vs 'predict_5days' (5-Day Range)
+  const [appMode, setAppMode] = useState<'predict_date' | 'predict_panchang' | 'predict_5days'>('predict_5days');
 
   // Astrologer Profile Modal State (Initially Open Every Time on page load)
   const [showProfileModal, setShowProfileModal] = useState(true);
 
-  // Device Credits State (3 predictions per device per week)
-  const [usedCredits, setUsedCredits] = useState<number>(() => {
-    const storedUsed = localStorage.getItem('muhurt_credits_used');
-    const storedTime = localStorage.getItem('muhurt_credits_timestamp');
-    const now = Date.now();
-
-    if (!storedTime || !storedUsed) {
-      localStorage.setItem('muhurt_credits_timestamp', now.toString());
-      localStorage.setItem('muhurt_credits_used', '0');
-      return 0;
-    }
-
-    const startTime = parseInt(storedTime, 10);
-    if (now - startTime >= WEEK_IN_MS) {
-      // 7 days passed -> auto reset credits
-      localStorage.setItem('muhurt_credits_timestamp', now.toString());
-      localStorage.setItem('muhurt_credits_used', '0');
-      return 0;
-    }
-
-    return parseInt(storedUsed, 10);
+  // User Account & Auth Modal State
+  const [userAccount, setUserAccount] = useState<UserAccount | null>(() => {
+    const saved = localStorage.getItem('muhurt_user_account');
+    return saved ? JSON.parse(saved) : null;
   });
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
-  const remainingCredits = Math.max(0, WEEKLY_CREDIT_LIMIT - usedCredits);
-
-  const getDaysUntilReset = () => {
-    const storedTime = localStorage.getItem('muhurt_credits_timestamp');
-    if (!storedTime) return 7;
-    const startTime = parseInt(storedTime, 10);
-    const msLeft = WEEK_IN_MS - (Date.now() - startTime);
-    const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
-    return Math.max(1, daysLeft);
+  const handleLoginSuccess = (user: UserAccount) => {
+    setUserAccount(user);
+    localStorage.setItem('muhurt_user_account', JSON.stringify(user));
   };
 
-  const consumeCredit = () => {
-    const newUsed = usedCredits + 1;
-    setUsedCredits(newUsed);
-    localStorage.setItem('muhurt_credits_used', newUsed.toString());
+  const handleLogout = () => {
+    setUserAccount(null);
+    localStorage.removeItem('muhurt_user_account');
   };
 
   // Top Popups State
@@ -252,7 +225,6 @@ export default function App() {
   // Muhurt Type Selection State
   const [selectedMuhurtId, setSelectedMuhurtId] = useState<number>(1);
   const selectedMuhurt = ALL_MUHURTS.find(m => m.id === selectedMuhurtId) || ALL_MUHURTS[0];
-  const selectedMuhurtRules = getMuhurtRules(selectedMuhurt.id);
 
   // Dropdown Filtering Toggle State (true = show only selected options for active Muhurt)
   const [filterOnlySelected, setFilterOnlySelected] = useState<boolean>(true);
@@ -356,11 +328,6 @@ export default function App() {
   }, [isLoading]);
 
   const triggerSinglePrediction = async () => {
-    if (remainingCredits <= 0) {
-      setErrorMsg(`Device credit limit reached: You have used all ${WEEKLY_CREDIT_LIMIT} weekly prediction credits for this device. Your credits will automatically reset in ${getDaysUntilReset()} day(s). For direct consultation, please contact Astrologer Yashesh Joshi at +91 99248 48727.`);
-      return;
-    }
-
     setIsLoading(true);
     setErrorMsg(null);
     setResult(null);
@@ -381,7 +348,6 @@ export default function App() {
     try {
       const prediction = await fetchVastuPrediction(input, apiKey);
       setResult(prediction);
-      consumeCredit();
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err?.message || "Failed to contact the astrological server. Please check your internet connection and API key.");
@@ -391,11 +357,6 @@ export default function App() {
   };
 
   const triggerDateAutoPrediction = async (targetDateStr: string) => {
-    if (remainingCredits <= 0) {
-      setErrorMsg(`Device credit limit reached: You have used all ${WEEKLY_CREDIT_LIMIT} weekly prediction credits for this device. Your credits will automatically reset in ${getDaysUntilReset()} day(s). For direct consultation, please contact Astrologer Yashesh Joshi at +91 99248 48727.`);
-      return;
-    }
-
     setIsLoading(true);
     setErrorMsg(null);
     setResult(null);
@@ -416,7 +377,6 @@ export default function App() {
     try {
       const prediction = await fetchVastuPredictionForDate(targetDateStr, input, apiKey);
       setResult(prediction);
-      consumeCredit();
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err?.message || "Failed to contact the astrological server. Please check your internet connection and API key.");
@@ -425,20 +385,7 @@ export default function App() {
     }
   };
 
-  const handlePredict = async () => {
-    if (appMode === 'predict_day') {
-      await triggerDateAutoPrediction(startDate);
-    } else {
-      await triggerSinglePrediction();
-    }
-  };
-
   const handlePredict5Days = async () => {
-    if (remainingCredits <= 0) {
-      setErrorMsg(`Device credit limit reached: You have used all ${WEEKLY_CREDIT_LIMIT} weekly prediction credits for this device. Your credits will automatically reset in ${getDaysUntilReset()} day(s). For direct consultation, please contact Astrologer Yashesh Joshi at +91 99248 48727.`);
-      return;
-    }
-
     setIsLoading(true);
     setErrorMsg(null);
     setResult(null);
@@ -460,7 +407,6 @@ export default function App() {
     try {
       const forecast = await fetchVastuBest5DaysPrediction(startDate, endDate, input, apiKey);
       setMultiResult(forecast);
-      consumeCredit();
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err?.message || "Failed to contact the astrological server. Please check your internet connection and API key.");
@@ -491,6 +437,15 @@ export default function App() {
         isOpen={showProfileModal} 
         onClose={() => setShowProfileModal(false)} 
       />
+
+      {/* User Auth Modal (Sign In / Sign Up) */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        currentUser={userAccount}
+        onLoginSuccess={handleLoginSuccess}
+        onLogout={handleLogout}
+      />
       
       <div className="app-container">
         
@@ -509,6 +464,24 @@ export default function App() {
           {/* Header Top Right Controls */}
           <div className="header-top-actions">
             
+            {/* User Account / Sign In & Sign Up Button */}
+            <button 
+              type="button" 
+              className="icon-action-btn"
+              onClick={() => setShowAuthModal(true)}
+              title={userAccount?.isLoggedIn ? `Account (${userAccount.name})` : "Sign In / Sign Up"}
+              aria-label="User Account"
+              style={userAccount?.isLoggedIn ? { background: 'rgba(255, 215, 0, 0.2)', border: '1px solid var(--gold-primary)' } : {}}
+            >
+              {userAccount?.isLoggedIn ? (
+                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--gold-primary)' }}>
+                  {userAccount.name.charAt(0).toUpperCase()}
+                </span>
+              ) : (
+                <LogIn size={18} />
+              )}
+            </button>
+
             {/* Consultant Profile Icon Button */}
             <button 
               type="button" 
@@ -549,18 +522,7 @@ export default function App() {
 
                     <div className="muhurt-menu-list" style={{ padding: '8px' }}>
                       
-                      {/* Device Credits Info inside Settings */}
-                      <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--gold-primary)', marginBottom: '4px', fontWeight: 600 }}>
-                          DEVICE WEEKLY CREDITS
-                        </div>
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 600 }}>
-                          {remainingCredits} / {WEEKLY_CREDIT_LIMIT} Predictions Remaining
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          Resets in {getDaysUntilReset()} day(s)
-                        </div>
-                      </div>
+
 
                       {/* Theme Toggle */}
                       <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
@@ -592,28 +554,51 @@ export default function App() {
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>
                           PREDICTION MODE
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           <button
                             type="button"
-                            className={`muhurt-menu-item ${appMode === 'standard' ? 'active' : ''}`}
+                            className={`muhurt-menu-item ${appMode === 'predict_date' ? 'active' : ''}`}
                             onClick={() => {
-                              setAppMode('standard');
+                              setAppMode('predict_date');
                               setShowSettingsMenu(false);
                             }}
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left' }}
                           >
-                            <span>Standard Mode (5-Day Forecast & Manual Panchang)</span>
-                            {appMode === 'standard' && <Check size={16} color="#ffd700" />}
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>1. Predict by Specific Date</div>
+                              <div style={{ fontSize: '0.72rem', opacity: 0.75 }}>Auto-calculates Panchang for a target date</div>
+                            </div>
+                            {appMode === 'predict_date' && <Check size={16} color="#ffd700" />}
                           </button>
                           <button
                             type="button"
-                            className={`muhurt-menu-item ${appMode === 'predict_day' ? 'active' : ''}`}
+                            className={`muhurt-menu-item ${appMode === 'predict_panchang' ? 'active' : ''}`}
                             onClick={() => {
-                              setAppMode('predict_day');
+                              setAppMode('predict_panchang');
                               setShowSettingsMenu(false);
                             }}
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left' }}
                           >
-                            <span>Predict Specific Date (Single Date Mode)</span>
-                            {appMode === 'predict_day' && <Check size={16} color="#ffd700" />}
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>2. Predict by Custom Panchang</div>
+                              <div style={{ fontSize: '0.72rem', opacity: 0.75 }}>Evaluate Tithi, Nakshatra, Vaar, Yoga, Karan</div>
+                            </div>
+                            {appMode === 'predict_panchang' && <Check size={16} color="#ffd700" />}
+                          </button>
+                          <button
+                            type="button"
+                            className={`muhurt-menu-item ${appMode === 'predict_5days' ? 'active' : ''}`}
+                            onClick={() => {
+                              setAppMode('predict_5days');
+                              setShowSettingsMenu(false);
+                            }}
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left' }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>3. Predict 5 Best Days in Range</div>
+                              <div style={{ fontSize: '0.72rem', opacity: 0.75 }}>Forecast top 5 auspicious dates in range</div>
+                            </div>
+                            {appMode === 'predict_5days' && <Check size={16} color="#ffd700" />}
                           </button>
                         </div>
                       </div>
@@ -634,18 +619,7 @@ export default function App() {
                         </label>
                       </div>
 
-                      {/* Favorable Limbs List */}
-                      <div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--gold-primary)', marginBottom: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', textAlign: 'left' }}>
-                          <Filter size={12} /> FAVORABLE DATA FOR {selectedMuhurt.nameEn.toUpperCase()}
-                        </div>
-                        <div style={{ background: 'rgba(255,215,0,0.05)', border: '1px solid rgba(255,215,0,0.15)', borderRadius: '8px', padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text-secondary)', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <div>• Shukla Tithis: {selectedMuhurtRules.tithiShukla.map(t => t.name).join(', ') || 'None'}</div>
-                          <div>• Krishna Tithis: {selectedMuhurtRules.tithiKrishna.map(t => t.name).join(', ') || 'None'}</div>
-                          <div>• Nakshatras ({selectedMuhurtRules.nakshatra.length}): {selectedMuhurtRules.nakshatra.map(n => n.name).join(', ') || 'None'}</div>
-                          <div>• Weekdays ({selectedMuhurtRules.vaar.length}): {selectedMuhurtRules.vaar.map(v => v.name).join(', ') || 'None'}</div>
-                        </div>
-                      </div>
+
 
                     </div>
                   </div>
@@ -708,26 +682,7 @@ export default function App() {
             Calculate and predict auspicious astrological alignment for Griha Pravesha, Udgatana, Vidyarambha, Vastu Shanti, and all 9 sacred ceremonies using classical Indian Vedic Astrology.
           </p>
 
-          {/* Device Credits Indicator Badge */}
-          <div className="credits-bar">
-            <div className="credits-info">
-              <Sparkles size={16} color="var(--gold-primary)" />
-              <span className="credits-prefix-desktop">Device Weekly Limit: </span>
-              <span className="credits-prefix-mobile">Weekly Limit: </span>
-              <span className="credits-count">
-                {remainingCredits} / {WEEKLY_CREDIT_LIMIT} <span className="credits-word">Credits </span>Remaining
-              </span>
-            </div>
-            <div className="credits-dots">
-              {[1, 2, 3].map((i) => (
-                <div 
-                  key={i} 
-                  className={`dot ${i <= remainingCredits ? 'active' : ''}`}
-                  title={`Credit ${i} of ${WEEKLY_CREDIT_LIMIT}`}
-                />
-              ))}
-            </div>
-          </div>
+
 
         </header>
 
@@ -737,12 +692,14 @@ export default function App() {
           {/* Form Side */}
           <section className="predictor-card" aria-labelledby="form-section-title">
             <h2 id="form-section-title" className="section-title">
-              <Sparkles size={20} /> {selectedMuhurt.nameEn} ({selectedMuhurt.nameGu}) Muhurt Predict
+              <Sparkles size={20} /> 
+              {appMode === 'predict_date' && `${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Date Predict`}
+              {appMode === 'predict_panchang' && `${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Custom Panchang Predict`}
+              {appMode === 'predict_5days' && `5 Best ${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Days Forecast`}
             </h2>
 
-            {/* Prediction Mode Date Window */}
-            {appMode === 'predict_day' ? (
-              /* Single Date Auto-Fetch Mode */
+            {/* Option 1: Single Date Auto-Fetch Mode */}
+            {appMode === 'predict_date' && (
               <div className="input-group">
                 <VedicDatePicker
                   label={`Target Date for ${selectedMuhurt.nameEn} Auto-Panchang Predict`}
@@ -750,31 +707,18 @@ export default function App() {
                   onChange={(newDate) => setStartDate(newDate)}
                 />
                 <p className="rule-highlight" style={{ marginTop: '10px' }}>
-                  <strong>Single Date Mode:</strong> Selecting a date will automatically calculate the complete Indian Panchang (Tithi, Nakshatra, Vaar, Yoga, Karan) and predict suitability percentage for {selectedMuhurt.nameEn}.
+                  <strong>Option 1 (Predict by Date):</strong> Pick any date to automatically calculate its complete Indian Panchang (Tithi, Nakshatra, Vaar, Yoga, Karan) and predict suitability for {selectedMuhurt.nameEn}.
                 </p>
-              </div>
-            ) : (
-              /* Standard Date Range Window */
-              <div className="input-group">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <VedicDatePicker
-                    label="Start Date"
-                    value={startDate}
-                    onChange={(newDate) => setStartDate(newDate)}
-                  />
-                  <VedicDatePicker
-                    label="End Date"
-                    value={endDate}
-                    onChange={(newDate) => setEndDate(newDate)}
-                    alignRight={true}
-                  />
-                </div>
               </div>
             )}
 
-            {/* Standard Mode Panchang Limb Selects (Hidden in Single Date Mode) */}
-            {appMode === 'standard' && (
+            {/* Option 2: Custom Panchang Limbs Mode */}
+            {appMode === 'predict_panchang' && (
               <>
+                <p className="rule-highlight" style={{ marginBottom: '16px' }}>
+                  <strong>Option 2 (Custom Panchang):</strong> Select specific Tithi, Nakshatra, Vaar, Yoga, and Karan to evaluate suitability score for custom Panchang parameters.
+                </p>
+
                 {/* Tithi */}
                 <div className="input-group">
                   <label htmlFor="tithi-select" className="input-label">
@@ -917,34 +861,69 @@ export default function App() {
               </>
             )}
 
-            {/* Predict Trigger button */}
-            <div className="predict-buttons-container" style={{ gridTemplateColumns: '1fr' }}>
-              {appMode === 'predict_day' ? (
+            {/* Option 3: Date Range 5 Best Days Forecast Mode */}
+            {appMode === 'predict_5days' && (
+              <div className="input-group">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <VedicDatePicker
+                    label="Start Date"
+                    value={startDate}
+                    onChange={(newDate) => setStartDate(newDate)}
+                  />
+                  <VedicDatePicker
+                    label="End Date"
+                    value={endDate}
+                    onChange={(newDate) => setEndDate(newDate)}
+                    alignRight={true}
+                  />
+                </div>
+                <p className="rule-highlight" style={{ marginTop: '14px' }}>
+                  <strong>Option 3 (5-Day Forecast):</strong> Scans the calendar date range to calculate and rank the 5 overall best auspicious dates for {selectedMuhurt.nameEn}.
+                </p>
+              </div>
+            )}
+
+            {/* Predict Trigger Button */}
+            <div className="predict-buttons-container" style={{ gridTemplateColumns: '1fr', marginTop: '20px' }}>
+              {appMode === 'predict_date' && (
                 <button 
                   type="button" 
                   className="predict-button"
-                  onClick={handlePredict}
-                  disabled={isLoading || remainingCredits <= 0}
+                  onClick={() => triggerDateAutoPrediction(startDate)}
+                  disabled={isLoading}
                 >
                   <Compass size={20} />
-                  {remainingCredits <= 0
-                    ? `Device Limit Reached (0/${WEEKLY_CREDIT_LIMIT} Credits)`
-                    : isLoading && predictionMode === 'single'
+                  {isLoading && predictionMode === 'single'
                     ? "Consulting Stars..."
                     : `Predict ${selectedMuhurt.nameEn} for ${startDate}`
                   }
                 </button>
-              ) : (
+              )}
+
+              {appMode === 'predict_panchang' && (
+                <button 
+                  type="button" 
+                  className="predict-button"
+                  onClick={triggerSinglePrediction}
+                  disabled={isLoading}
+                >
+                  <Compass size={20} />
+                  {isLoading && predictionMode === 'single'
+                    ? "Evaluating Panchang..."
+                    : `Predict ${selectedMuhurt.nameEn} for Custom Panchang`
+                  }
+                </button>
+              )}
+
+              {appMode === 'predict_5days' && (
                 <button 
                   type="button" 
                   className="predict-button"
                   onClick={handlePredict5Days}
-                  disabled={isLoading || remainingCredits <= 0}
+                  disabled={isLoading}
                 >
                   <Sparkles size={20} style={{ color: 'inherit' }} />
-                  {remainingCredits <= 0
-                    ? `Device Limit Reached (0/${WEEKLY_CREDIT_LIMIT} Credits)`
-                    : isLoading && predictionMode === 'multi'
+                  {isLoading && predictionMode === 'multi'
                     ? "Generating Forecast..."
                     : `Predict 5 Best ${selectedMuhurt.nameEn} Days`
                   }
@@ -988,32 +967,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Device Credit Limit Exhausted Banner */}
-            {remainingCredits <= 0 && !errorMsg && !isLoading && (
-              <div className="credit-exhausted-card">
-                <h3 className="credit-exhausted-title">
-                  <ShieldAlert size={20} /> Weekly Device Limit Reached (3/3 Credits Used)
-                </h3>
-                <p className="credit-exhausted-desc">
-                  You have reached the maximum 3 predictions allowed per device for this week. Your device credits will automatically reset in <strong>{getDaysUntilReset()} day(s)</strong>.
-                </p>
-                <div style={{ marginTop: '16px', borderTop: '1px solid rgba(239, 68, 68, 0.2)', paddingTop: '14px' }}>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--gold-primary)', margin: '0 0 10px', fontWeight: 600 }}>
-                    For personal horoscope analysis, custom muhurt calculations, or unlimited access:
-                  </p>
-                  <a 
-                    href="tel:+919924848727"
-                    className="predict-button"
-                    style={{ textDecoration: 'none', padding: '10px 18px', fontSize: '0.9rem' }}
-                  >
-                    <PhoneCall size={16} /> Contact Astrologer Yashesh Joshi (+91 99248 48727)
-                  </a>
-                </div>
-              </div>
-            )}
-
             {/* No result yet */}
-            {!isLoading && !result && !multiResult && !errorMsg && remainingCredits > 0 && (
+            {!isLoading && !result && !multiResult && !errorMsg && (
               <div className="results-placeholder">
                 <Compass size={64} className="placeholder-icon" />
                 <p style={{ fontFamily: 'var(--heading-font)', fontSize: '1.2rem', color: 'var(--gold-primary)', marginBottom: '8px' }}>
