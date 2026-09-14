@@ -6,14 +6,19 @@ import {
   Home,
   Sun,
   Moon,
-  MoreVertical,
   Settings,
   Check,
   User,
   ShieldAlert,
-  ShieldCheck,
   PhoneCall,
-  LogIn
+  LogIn,
+  Utensils,
+  Award,
+  Store,
+  Scissors,
+  BookOpen,
+  Heart,
+  Flame
 } from 'lucide-react';
 import { 
   fetchVastuPrediction, 
@@ -35,6 +40,16 @@ import { AuthModal } from './AuthModal';
 import AdminPanel from './AdminPanel';
 import type { UserAccount } from './AuthModal';
 import { apiGetMe, removeAuthToken, getAuthToken } from './api';
+
+const DEFAULT_API_KEY = "";
+
+const loadingTexts = [
+  "Aligning directional parameters of Vedic Shastra...",
+  "Querying cosmic positions of the Nakshatras...",
+  "Analyzing interaction between Tithi and Karan...",
+  "Consulting the ancient laws of Vedic Panchang...",
+  "Evaluating suitability score for your ceremony..."
+];
 
 // Options definitions with details
 const tithiNumbers = [
@@ -174,15 +189,21 @@ const karanOptions = [
   { value: 'Kimstughna', label: 'Kimstughna - Mixed/Inauspicious', isAuspicious: false, desc: 'Uncertain outcomes' }
 ];
 
-const DEFAULT_API_KEY = "";
+const getMuhurtIcon = (id: number) => {
+  switch (id) {
+    case 1: return <Home size={22} color="#fde047" />;
+    case 2: return <Utensils size={22} color="#fbbf24" />;
+    case 3: return <Award size={22} color="#f59e0b" />;
+    case 4: return <Store size={22} color="#4ade80" />;
+    case 5: return <Scissors size={22} color="#38bdf8" />;
+    case 6: return <BookOpen size={22} color="#c084fc" />;
+    case 7: return <Heart size={22} color="#f43f5e" />;
+    case 8: return <Flame size={22} color="#fb923c" />;
+    case 9: return <Compass size={22} color="#eab308" />;
+    default: return <Compass size={22} color="#ffd700" />;
+  }
+};
 
-const loadingTexts = [
-  "Aligning directional parameters of Vedic Shastra...",
-  "Querying cosmic positions of the Nakshatras...",
-  "Analyzing interaction between Tithi and Karan...",
-  "Consulting the ancient laws of Vedic Panchang...",
-  "Evaluating suitability score for your ceremony..."
-];
 export default function App() {
   // Dark / Light Theme Mode State
   const [themeMode, setThemeMode] = useState<'dark' | 'light'>(() => {
@@ -287,7 +308,6 @@ export default function App() {
   };
 
   // Top Popups State
-  const [showMuhurtMenu, setShowMuhurtMenu] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
   // Muhurt Type Selection State
@@ -632,7 +652,6 @@ export default function App() {
                 className="icon-action-btn"
                 onClick={() => {
                   setShowSettingsMenu(prev => !prev);
-                  setShowMuhurtMenu(false);
                 }}
                 title="Settings & Options"
                 aria-label="Settings Menu"
@@ -654,8 +673,6 @@ export default function App() {
 
                     <div className="muhurt-menu-list" style={{ padding: '8px' }}>
                       
-
-
                       {/* Theme Toggle */}
                       <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>
@@ -735,6 +752,38 @@ export default function App() {
                         </div>
                       </div>
 
+                      {/* Muhurt Ceremony Selector in Settings */}
+                      <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>
+                          SELECT MUHURT CEREMONY
+                        </div>
+                        <select
+                          value={selectedMuhurtId}
+                          onChange={(e) => {
+                            setSelectedMuhurtId(Number(e.target.value));
+                            setShowSettingsMenu(false);
+                          }}
+                          style={{
+                            width: '100%',
+                            backgroundColor: '#1e293b',
+                            border: '1px solid rgba(255, 215, 0, 0.3)',
+                            color: '#ffd700',
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            fontSize: '0.85rem',
+                            fontWeight: 600,
+                            outline: 'none',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {ALL_MUHURTS.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.nameEn} — {m.nameHi} ({m.nameSa})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
                       {/* Options Filter Switch */}
                       <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '10px' }}>
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>
@@ -751,53 +800,6 @@ export default function App() {
                         </label>
                       </div>
 
-
-
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* 3-Dot Menu Button */}
-            <div style={{ position: 'relative' }}>
-              <button 
-                type="button" 
-                className="icon-action-btn"
-                onClick={() => {
-                  setShowMuhurtMenu(prev => !prev);
-                  setShowSettingsMenu(false);
-                }}
-                title="Select Muhurt Ceremony"
-                aria-label="Muhurt Options Menu"
-              >
-                <MoreVertical size={20} />
-              </button>
-
-              {/* Ceremony Popup Menu Dropdown */}
-              {showMuhurtMenu && (
-                <>
-                  <div 
-                    style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 190 }}
-                    onClick={() => setShowMuhurtMenu(false)}
-                  />
-                  <div className="muhurt-popup-menu">
-                    <div className="muhurt-menu-header">Select Muhurt Ceremony</div>
-                    <div className="muhurt-menu-list">
-                      {ALL_MUHURTS.map((m) => (
-                        <button
-                          key={m.id}
-                          type="button"
-                          className={`muhurt-menu-item ${selectedMuhurtId === m.id ? 'active' : ''}`}
-                          onClick={() => {
-                            setSelectedMuhurtId(m.id);
-                            setShowMuhurtMenu(false);
-                          }}
-                        >
-                          <span>{m.nameGu} — {m.nameEn}</span>
-                          {selectedMuhurtId === m.id && <Check size={16} color="#ffd700" />}
-                        </button>
-                      ))}
                     </div>
                   </div>
                 </>
@@ -817,6 +819,142 @@ export default function App() {
 
 
         </header>
+
+        {/* MUHURT CEREMONY SELECTION GRID (INITIAL GRID VIEW) */}
+        <section 
+          aria-label="Select Muhurt Ceremony Grid"
+          style={{
+            maxWidth: '1200px',
+            margin: '0 auto 28px auto',
+            padding: '20px',
+            backgroundColor: 'rgba(13, 9, 38, 0.75)',
+            border: '1px solid rgba(255, 215, 0, 0.3)',
+            borderRadius: '16px',
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 12px 35px rgba(0, 0, 0, 0.6)'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#fde047', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--heading-font)' }}>
+                <Sparkles size={20} color="#eab308" /> Sacred Muhurt Ceremonies (शुभ मुहूर्त चयन)
+              </h2>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>
+                Select any ceremony below to calculate Panchang suitability scores & remedies.
+              </p>
+            </div>
+            <div style={{
+              backgroundColor: 'rgba(234, 179, 8, 0.15)',
+              border: '1px solid rgba(234, 179, 8, 0.4)',
+              color: '#fde047',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              ✓ Active: {selectedMuhurt.nameEn} ({selectedMuhurt.nameHi})
+            </div>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: '14px'
+          }}>
+            {ALL_MUHURTS.map((m) => {
+              const isSelected = selectedMuhurtId === m.id;
+              return (
+                <div
+                  key={m.id}
+                  onClick={() => setSelectedMuhurtId(m.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '14px',
+                    padding: '14px 16px',
+                    borderRadius: '14px',
+                    backgroundColor: isSelected ? 'rgba(234, 179, 8, 0.15)' : 'rgba(15, 23, 42, 0.65)',
+                    border: isSelected ? '2px solid #eab308' : '1px solid rgba(255, 255, 255, 0.1)',
+                    boxShadow: isSelected ? '0 0 22px rgba(234, 179, 8, 0.3)' : 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    position: 'relative'
+                  }}
+                >
+                  {/* Left: 1 Icon */}
+                  <div style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: '12px',
+                    backgroundColor: isSelected ? 'rgba(234, 179, 8, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+                    border: isSelected ? '1px solid rgba(234, 179, 8, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    {getMuhurtIcon(m.id)}
+                  </div>
+
+                  {/* Right Side: 3 Type Names (1st English, 2nd Hindi, 3rd Sanskrit) */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* 1st: English */}
+                    <div style={{
+                      fontWeight: 700,
+                      fontSize: '0.95rem',
+                      color: isSelected ? '#fde047' : '#f8fafc',
+                      lineHeight: 1.2
+                    }}>
+                      {m.nameEn}
+                    </div>
+
+                    {/* 2nd: Hindi */}
+                    <div style={{
+                      fontSize: '0.82rem',
+                      color: isSelected ? '#fef08a' : '#cbd5e1',
+                      marginTop: '3px',
+                      fontWeight: 600
+                    }}>
+                      {m.nameHi}
+                    </div>
+
+                    {/* 3rd: Sanskrit */}
+                    <div style={{
+                      fontSize: '0.76rem',
+                      color: isSelected ? '#fde047' : '#94a3b8',
+                      marginTop: '2px',
+                      fontStyle: 'italic'
+                    }}>
+                      {m.nameSa}
+                    </div>
+                  </div>
+
+                  {/* Active Indicator checkmark */}
+                  {isSelected && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '10px',
+                      right: '10px',
+                      backgroundColor: '#eab308',
+                      color: '#0a0d14',
+                      borderRadius: '50%',
+                      width: '20px',
+                      height: '20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Check size={13} strokeWidth={3} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
 
         {/* Main Interface Grid */}
         <main className="main-grid">

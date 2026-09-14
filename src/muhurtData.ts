@@ -1,11 +1,12 @@
-import muhurtsJson from '../muhurts.json';
 import masterDataJson from '../master-data.json';
 import selectedIndicesJson from '../astrology_muhurt_selected_indices_only.json';
 
 export interface MuhurtTypeItem {
   id: number;
-  nameGu: string;
   nameEn: string;
+  nameHi: string;
+  nameSa: string;
+  nameGu: string;
 }
 
 export interface MuhurtRules {
@@ -17,11 +18,71 @@ export interface MuhurtRules {
   karan: { id: number; name: string }[];
 }
 
-export const ALL_MUHURTS: MuhurtTypeItem[] = muhurtsJson.muhurts.map(m => ({
-  id: m.id,
-  nameGu: m.name.gu,
-  nameEn: m.name.en,
-}));
+export const ALL_MUHURTS: MuhurtTypeItem[] = [
+  {
+    id: 1,
+    nameEn: "Griha Pravesha",
+    nameHi: "गृह प्रवेश",
+    nameSa: "गृहप्रवेशः",
+    nameGu: "ગૃહપ્રવેશ"
+  },
+  {
+    id: 2,
+    nameEn: "Annaprashana",
+    nameHi: "अन्नप्राशन",
+    nameSa: "अन्नप्राशनम्",
+    nameGu: "અન્નપ્રાશન"
+  },
+  {
+    id: 3,
+    nameEn: "Karnavedha",
+    nameHi: "कर्णवेध",
+    nameSa: "कर्णवेधः",
+    nameGu: "કર્ણવેધ"
+  },
+  {
+    id: 4,
+    nameEn: "Udgatana",
+    nameHi: "उद्घाटन",
+    nameSa: "उद्घाटनम्",
+    nameGu: "ઉદ્ઘાટન"
+  },
+  {
+    id: 5,
+    nameEn: "Keshakartana",
+    nameHi: "केशकर्तन (मुंडन)",
+    nameSa: "केशकर्तनम्",
+    nameGu: "કેશકર્તન"
+  },
+  {
+    id: 6,
+    nameEn: "Vidyarambha",
+    nameHi: "विद्यारंभ",
+    nameSa: "विद्यारम्भः",
+    nameGu: "વિદ્યારંભ"
+  },
+  {
+    id: 7,
+    nameEn: "Simantonnayana",
+    nameHi: "सीमन्तोन्नयन",
+    nameSa: "सीमन्तोन्नयनम्",
+    nameGu: "સીમંત"
+  },
+  {
+    id: 8,
+    nameEn: "Upanayana",
+    nameHi: "उपनयन (जनेऊ)",
+    nameSa: "उपनयनम्",
+    nameGu: "ઉપનયન"
+  },
+  {
+    id: 9,
+    nameEn: "Vastu Shanti",
+    nameHi: "वास्तु शांति",
+    nameSa: "वास्तुशान्तिः",
+    nameGu: "વાસ્તુશાંતિ"
+  }
+];
 
 export function getMuhurtRecord(id: number) {
   return selectedIndicesJson.records.find(r => r.record_id === id) || selectedIndicesJson.records[0];
