@@ -95,6 +95,58 @@ export function getNextKaran(current: string): string {
   return 'Bava';
 }
 
+export function getVaarForDate(d: Date): string {
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return days[d.getDay()];
+}
+
+export function parseTithiComponents(tithiStr: string): { num: string; paksha: string } {
+  const isKrishna = tithiStr.includes('Krishna');
+  const isPurnima = tithiStr.includes('Purnima');
+  const isAmavasya = tithiStr.includes('Amavasya');
+
+  if (isPurnima) return { num: 'Purnima', paksha: 'Shukla' };
+  if (isAmavasya) return { num: 'Amavasya', paksha: 'Krishna' };
+
+  const paksha = isKrishna ? 'Krishna' : 'Shukla';
+  const match = tithiStr.match(/\((\d+)\)/) || tithiStr.match(/\b(\d+)\b/);
+  const num = match ? match[1] : '5';
+  return { num, paksha };
+}
+
+export function getPanchangForDateOffset(
+  targetDate: Date,
+  offsetDays: number,
+  startInput: MuhuratInput
+): MuhuratInput {
+  const vaar = getVaarForDate(targetDate);
+  
+  let { num: tithiNum, paksha: tithiPaksha } = parseTithiComponents(startInput.tithi);
+  let nakshatra = startInput.nakshatra;
+  let yoga = startInput.yoga;
+  let karan = startInput.karan;
+
+  for (let i = 0; i < offsetDays; i++) {
+    const nextTithi = getNextTithi(tithiNum, tithiPaksha);
+    tithiNum = nextTithi.num;
+    tithiPaksha = nextTithi.paksha;
+    nakshatra = getNextNakshatra(nakshatra);
+    yoga = getNextYoga(yoga);
+    karan = getNextKaran(karan);
+  }
+
+  return {
+    muhurtTypeId: startInput.muhurtTypeId,
+    muhurtNameEn: startInput.muhurtNameEn,
+    muhurtNameGu: startInput.muhurtNameGu,
+    tithi: formatTithi(tithiNum, tithiPaksha),
+    nakshatra,
+    vaar,
+    yoga,
+    karan
+  };
+}
+
 export function generateNext5Days(
   startTithiNum: string,
   startTithiPaksha: string,
@@ -152,3 +204,4 @@ export function generateNext5Days(
   
   return result;
 }
+

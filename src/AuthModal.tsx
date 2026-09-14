@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, User, Eye, EyeOff, Sparkles, LogIn, UserPlus, LogOut, CheckCircle2, Phone } from 'lucide-react';
+import { X, Mail, Lock, User, Eye, EyeOff, Sparkles, LogIn, UserPlus, LogOut, CheckCircle2, Phone, Loader2 } from 'lucide-react';
+import { apiSignIn, apiSignUp, setAuthToken } from './api';
 
 export interface UserAccount {
   name: string;
@@ -40,7 +41,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Status Messages
+  // Status & Loading States
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -55,6 +57,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setConfirmPassword('');
     setErrorMsg(null);
     setSuccessMsg(null);
+    setIsSubmitting(false);
   };
 
   const handleSwitchMode = (mode: 'signin' | 'signup') => {
@@ -63,7 +66,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   // Direct Sign In Handler
-  const handleSignIn = (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -79,26 +82,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    const isEmail = identifier.includes('@');
-    const derivedName = isEmail 
-      ? (identifier.split('@')[0] || 'Vedic User') 
-      : `User (${identifier.slice(-4)})`;
-    const formattedName = derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
+    setIsSubmitting(true);
+    try {
+      const res = await apiSignIn({
+        login_input: identifier,
+        password: password,
+      });
 
-    const user: UserAccount = {
-      name: formattedName,
-      email: isEmail ? identifier : '',
-      phone: isEmail ? '' : identifier,
-      isLoggedIn: true,
-    };
+      setAuthToken(res.access_token);
 
-    onLoginSuccess(user);
-    resetForm();
-    onClose();
+      const user: UserAccount = {
+        name: res.user.name,
+        email: res.user.email || '',
+        phone: res.user.phone || '',
+        isLoggedIn: true,
+      };
+
+      onLoginSuccess(user);
+      resetForm();
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Sign in failed. Please check credentials.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Direct Sign Up Handler
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -129,16 +140,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    const user: UserAccount = {
-      name: name.trim(),
-      email: email.trim(),
-      phone: `${countryCode} ${cleanPhone}`,
-      isLoggedIn: true,
-    };
+    setIsSubmitting(true);
+    try {
+      const formattedPhone = `${countryCode} ${cleanPhone}`;
+      const res = await apiSignUp({
+        name: name.trim(),
+        email: email.trim(),
+        phone: formattedPhone,
+        password: password,
+      });
 
-    onLoginSuccess(user);
-    resetForm();
-    onClose();
+      setAuthToken(res.access_token);
+
+      const user: UserAccount = {
+        name: res.user.name,
+        email: res.user.email || '',
+        phone: res.user.phone || '',
+        isLoggedIn: true,
+      };
+
+      onLoginSuccess(user);
+      resetForm();
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -279,6 +307,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <h2 style={{ fontFamily: 'var(--heading-font)', fontSize: '1.2rem', color: 'var(--gold-primary, #ffd700)', margin: '2px 0 0' }}>
                 {authMode === 'signin' ? 'Sign In to Account' : 'Create New Account'}
               </h2>
+              {authMode === 'signup' && (
+                <div style={{ fontSize: '0.75rem', color: '#4ade80', marginTop: '4px', fontWeight: 600, backgroundColor: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)', padding: '3px 8px', borderRadius: '6px', display: 'inline-block' }}>
+                  🎁 Get 3 Free Credits on Sign Up to test predictions!
+                </div>
+              )}
             </div>
 
             {/* Mode Switch Tabs (Sign In vs Sign Up) */}
@@ -447,10 +480,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="predict-button"
-                  style={{ width: '100%', justifyContent: 'center', fontSize: '0.85rem', padding: '8px 12px' }}
+                  style={{ width: '100%', justifyContent: 'center', fontSize: '0.85rem', padding: '8px 12px', opacity: isSubmitting ? 0.7 : 1 }}
                 >
-                  <LogIn size={15} /> Sign In
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" /> Verifying Credentials...
+                    </>
+                  ) : (
+                    <>
+                      <LogIn size={15} /> Sign In
+                    </>
+                  )}
                 </button>
               </form>
             ) : (
@@ -626,10 +668,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="predict-button"
-                  style={{ width: '100%', justifyContent: 'center', fontSize: '0.85rem', padding: '8px 12px' }}
+                  style={{ width: '100%', justifyContent: 'center', fontSize: '0.85rem', padding: '8px 12px', opacity: isSubmitting ? 0.7 : 1 }}
                 >
-                  <UserPlus size={15} /> Complete Sign Up
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" /> Creating Account...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus size={15} /> Complete Sign Up
+                    </>
+                  )}
                 </button>
               </form>
             )}

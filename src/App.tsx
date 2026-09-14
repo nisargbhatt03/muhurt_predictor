@@ -11,6 +11,7 @@ import {
   Check,
   User,
   ShieldAlert,
+  ShieldCheck,
   PhoneCall,
   LogIn
 } from 'lucide-react';
@@ -31,7 +32,9 @@ import {
 import { VedicDatePicker } from './VedicDatePicker';
 import { ProfileModal } from './ProfileModal';
 import { AuthModal } from './AuthModal';
+import AdminPanel from './AdminPanel';
 import type { UserAccount } from './AuthModal';
+import { apiGetMe, removeAuthToken, getAuthToken } from './api';
 
 // Options definitions with details
 const tithiNumbers = [
@@ -195,6 +198,19 @@ export default function App() {
     localStorage.setItem('vastu_muhurat_theme', themeMode);
   }, [themeMode]);
 
+  // Admin Panel Route View State
+  const [isAdminView, setIsAdminView] = useState(() => {
+    return window.location.pathname.startsWith('/admin');
+  });
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setIsAdminView(window.location.pathname.startsWith('/admin'));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // App Mode State: 'predict_date' (Single Date) vs 'predict_panchang' (Custom Limbs) vs 'predict_5days' (5-Day Range)
   const [appMode, setAppMode] = useState<'predict_date' | 'predict_panchang' | 'predict_5days'>('predict_5days');
 
@@ -207,13 +223,48 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingPredictAction, setPendingPredictAction] = useState<'single' | 'date' | '5days' | null>(null);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (token) {
+      apiGetMe()
+        .then((userData) => {
+          const user: UserAccount = {
+            name: userData.name,
+            email: userData.email || '',
+            phone: userData.phone || '',
+            isLoggedIn: true,
+          };
+          setUserAccount(user);
+          localStorage.setItem('muhurt_user_account', JSON.stringify(user));
+        })
+        .catch(() => {
+          removeAuthToken();
+          setUserAccount(null);
+          localStorage.removeItem('muhurt_user_account');
+        });
+    }
+  }, []);
 
   const handleLoginSuccess = (user: UserAccount) => {
     setUserAccount(user);
     localStorage.setItem('muhurt_user_account', JSON.stringify(user));
+    setShowAuthModal(false);
+
+    // Auto-trigger prediction if user clicked Predict prior to logging in
+    if (pendingPredictAction === 'single') {
+      setTimeout(() => triggerSinglePredictionCore(), 100);
+    } else if (pendingPredictAction === 'date') {
+      setTimeout(() => triggerDateAutoPredictionCore(startDate), 100);
+    } else if (pendingPredictAction === '5days') {
+      setTimeout(() => handlePredict5DaysCore(), 100);
+    }
+    setPendingPredictAction(null);
   };
 
   const handleLogout = () => {
+    removeAuthToken();
     setUserAccount(null);
     localStorage.removeItem('muhurt_user_account');
   };
@@ -229,6 +280,15 @@ export default function App() {
   // Dropdown Filtering Toggle State (true = show only selected options for active Muhurt)
   const [filterOnlySelected, setFilterOnlySelected] = useState<boolean>(true);
 
+  // Helper to calculate total days in date range
+  const getDaysInRange = (s: string, e: string) => {
+    const start = new Date(s + 'T00:00:00');
+    const end = new Date(e + 'T00:00:00');
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 1;
+    const diff = Math.max(0, end.getTime() - start.getTime());
+    return Math.floor(diff / (1000 * 60 * 60 * 24)) + 1;
+  };
+
   // Input State: Custom Start and End Date
   const [startDate, setStartDate] = useState<string>(() => {
     const today = new Date();
@@ -237,9 +297,29 @@ export default function App() {
 
   const [endDate, setEndDate] = useState<string>(() => {
     const today = new Date();
-    const nextYear = new Date(today.setFullYear(today.getFullYear() + 1));
-    return nextYear.toISOString().split('T')[0];
+    const next5Days = new Date(today);
+    next5Days.setDate(today.getDate() + 5);
+    return next5Days.toISOString().split('T')[0];
   });
+
+  const daysInRange = getDaysInRange(startDate, endDate);
+  const maxPredictionsCount = Math.min(5, Math.max(1, daysInRange));
+
+  const handleStartDateChange = (newStart: string) => {
+    setStartDate(newStart);
+    if (newStart > endDate) {
+      setEndDate(newStart);
+    }
+  };
+
+  const handleEndDateChange = (newEnd: string) => {
+    if (newEnd < startDate) {
+      setStartDate(newEnd);
+      setEndDate(newEnd);
+    } else {
+      setEndDate(newEnd);
+    }
+  };
 
   const [selectedTithiNum, setSelectedTithiNum] = useState('5');
   const [selectedTithiPaksha, setSelectedTithiPaksha] = useState('Shukla');
@@ -327,7 +407,21 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isLoading]);
 
+  const checkUserLoggedIn = (actionType: 'single' | 'date' | '5days'): boolean => {
+    if (!userAccount || !userAccount.isLoggedIn) {
+      setPendingPredictAction(actionType);
+      setShowAuthModal(true);
+      return false;
+    }
+    return true;
+  };
+
   const triggerSinglePrediction = async () => {
+    if (!checkUserLoggedIn('single')) return;
+    await triggerSinglePredictionCore();
+  };
+
+  const triggerSinglePredictionCore = async () => {
     setIsLoading(true);
     setErrorMsg(null);
     setResult(null);
@@ -357,6 +451,11 @@ export default function App() {
   };
 
   const triggerDateAutoPrediction = async (targetDateStr: string) => {
+    if (!checkUserLoggedIn('date')) return;
+    await triggerDateAutoPredictionCore(targetDateStr);
+  };
+
+  const triggerDateAutoPredictionCore = async (targetDateStr: string) => {
     setIsLoading(true);
     setErrorMsg(null);
     setResult(null);
@@ -386,6 +485,11 @@ export default function App() {
   };
 
   const handlePredict5Days = async () => {
+    if (!checkUserLoggedIn('5days')) return;
+    await handlePredict5DaysCore();
+  };
+
+  const handlePredict5DaysCore = async () => {
     setIsLoading(true);
     setErrorMsg(null);
     setResult(null);
@@ -427,6 +531,17 @@ export default function App() {
   const strokeDashoffset = result
     ? circumference - (result.auspiciousnessScore / 100) * circumference
     : circumference;
+
+  if (isAdminView) {
+    return (
+      <AdminPanel 
+        onBackToApp={() => {
+          window.history.pushState({}, '', '/');
+          setIsAdminView(false);
+        }} 
+      />
+    );
+  }
 
   return (
     <>
@@ -491,6 +606,21 @@ export default function App() {
               aria-label="Astrologer Profile"
             >
               <User size={20} />
+            </button>
+
+            {/* Admin Panel Icon Button */}
+            <button 
+              type="button" 
+              className="icon-action-btn"
+              onClick={() => {
+                window.history.pushState({}, '', '/admin');
+                setIsAdminView(true);
+              }}
+              title="Admin Panel User Grid & API Switcher (http://localhost:5173/admin)"
+              aria-label="Admin Panel"
+              style={{ background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.4)' }}
+            >
+              <ShieldCheck size={20} color="#fde047" />
             </button>
 
             {/* Settings Icon Button */}
@@ -595,8 +725,8 @@ export default function App() {
                             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left' }}
                           >
                             <div>
-                              <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>3. Predict 5 Best Days in Range</div>
-                              <div style={{ fontSize: '0.72rem', opacity: 0.75 }}>Forecast top 5 auspicious dates in range</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>3. Predict Best Days in Range</div>
+                              <div style={{ fontSize: '0.72rem', opacity: 0.75 }}>Forecast top auspicious dates in range (up to 5)</div>
                             </div>
                             {appMode === 'predict_5days' && <Check size={16} color="#ffd700" />}
                           </button>
@@ -695,7 +825,7 @@ export default function App() {
               <Sparkles size={20} /> 
               {appMode === 'predict_date' && `${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Date Predict`}
               {appMode === 'predict_panchang' && `${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Custom Panchang Predict`}
-              {appMode === 'predict_5days' && `5 Best ${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Days Forecast`}
+              {appMode === 'predict_5days' && `${maxPredictionsCount > 1 ? `Best ${maxPredictionsCount} Days` : 'Best Day'} ${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Forecast`}
             </h2>
 
             {/* Option 1: Single Date Auto-Fetch Mode */}
@@ -861,24 +991,24 @@ export default function App() {
               </>
             )}
 
-            {/* Option 3: Date Range 5 Best Days Forecast Mode */}
+            {/* Option 3: Date Range Forecast Mode */}
             {appMode === 'predict_5days' && (
               <div className="input-group">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <VedicDatePicker
                     label="Start Date"
                     value={startDate}
-                    onChange={(newDate) => setStartDate(newDate)}
+                    onChange={(newDate) => handleStartDateChange(newDate)}
                   />
                   <VedicDatePicker
                     label="End Date"
                     value={endDate}
-                    onChange={(newDate) => setEndDate(newDate)}
+                    onChange={(newDate) => handleEndDateChange(newDate)}
                     alignRight={true}
                   />
                 </div>
                 <p className="rule-highlight" style={{ marginTop: '14px' }}>
-                  <strong>Option 3 (5-Day Forecast):</strong> Scans the calendar date range to calculate and rank the 5 overall best auspicious dates for {selectedMuhurt.nameEn}.
+                  <strong>Option 3 (Range Forecast):</strong> Scans selected range ({startDate} to {endDate}, {daysInRange} day{daysInRange > 1 ? 's' : ''}) to calculate and rank up to {maxPredictionsCount} best auspicious date{maxPredictionsCount > 1 ? 's' : ''} strictly within your selected range.
                 </p>
               </div>
             )}
@@ -925,7 +1055,7 @@ export default function App() {
                   <Sparkles size={20} style={{ color: 'inherit' }} />
                   {isLoading && predictionMode === 'multi'
                     ? "Generating Forecast..."
-                    : `Predict 5 Best ${selectedMuhurt.nameEn} Days`
+                    : `Predict Best ${maxPredictionsCount > 1 ? `${maxPredictionsCount} Days` : 'Day'} in Range`
                   }
                 </button>
               )}
@@ -1115,7 +1245,7 @@ export default function App() {
                 {activeMultiTab === 'overview' && (
                   <div className="timeline-overview">
                     <p className="timeline-subtitle">
-                      Top 5 {selectedMuhurt.nameEn} ({selectedMuhurt.nameGu}) recommendations from {startDate} to {endDate}:
+                      Top {multiResult.predictions.length} {selectedMuhurt.nameEn} ({selectedMuhurt.nameGu}) recommendation{multiResult.predictions.length > 1 ? 's' : ''} strictly between {startDate} and {endDate}:
                     </p>
                     <div className="timeline-list">
                       {multiResult.predictions.map((pred) => {

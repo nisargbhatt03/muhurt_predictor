@@ -86,7 +86,7 @@ export const VedicDatePicker: React.FC<VedicDatePickerProps> = ({
     setIsOpen(false);
   };
 
-  const handlePreset = (type: 'today' | 'tomorrow' | '3months' | '1year') => {
+  const handlePreset = (type: 'today' | 'tomorrow' | '5days' | '3months' | '1year') => {
     const today = new Date();
     let target = new Date();
     
@@ -94,6 +94,8 @@ export const VedicDatePicker: React.FC<VedicDatePickerProps> = ({
       target = today;
     } else if (type === 'tomorrow') {
       target.setDate(today.getDate() + 1);
+    } else if (type === '5days') {
+      target.setDate(today.getDate() + 5);
     } else if (type === '3months') {
       target.setMonth(today.getMonth() + 3);
     } else if (type === '1year') {
@@ -320,6 +322,14 @@ export const VedicDatePicker: React.FC<VedicDatePickerProps> = ({
               onClick={() => handlePreset('tomorrow')}
             >
               ✦ Tomorrow
+            </button>
+            <button
+              type="button"
+              className="dev-btn"
+              style={{ padding: '4px 6px', fontSize: '0.7rem', borderRadius: '6px' }}
+              onClick={() => handlePreset('5days')}
+            >
+              ✦ +5 Days
             </button>
             <button
               type="button"
