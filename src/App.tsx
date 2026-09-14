@@ -227,6 +227,18 @@ export default function App() {
 
   useEffect(() => {
     const token = getAuthToken();
+    if (token === 'dummy_muhurt_token') {
+      const dummyUser: UserAccount = {
+        name: "Muhurt User",
+        email: "muhurtp@gmail.com",
+        phone: "+91 98765 43210",
+        isLoggedIn: true,
+      };
+      setUserAccount(dummyUser);
+      localStorage.setItem('muhurt_user_account', JSON.stringify(dummyUser));
+      return;
+    }
+
     if (token) {
       apiGetMe()
         .then((userData) => {
@@ -240,9 +252,14 @@ export default function App() {
           localStorage.setItem('muhurt_user_account', JSON.stringify(user));
         })
         .catch(() => {
-          removeAuthToken();
-          setUserAccount(null);
-          localStorage.removeItem('muhurt_user_account');
+          const saved = localStorage.getItem('muhurt_user_account');
+          if (saved) {
+            setUserAccount(JSON.parse(saved));
+          } else {
+            removeAuthToken();
+            setUserAccount(null);
+            localStorage.removeItem('muhurt_user_account');
+          }
         });
     }
   }, []);

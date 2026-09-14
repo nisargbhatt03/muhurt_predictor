@@ -83,6 +83,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
 
     setIsSubmitting(true);
+    const isDummyCredentials = (identifier.toLowerCase() === 'muhurtp@gmail.com' || identifier.toLowerCase() === 'muhurtp') && password === 'muhurt123';
+
     try {
       const res = await apiSignIn({
         login_input: identifier,
@@ -102,7 +104,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       resetForm();
       onClose();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Sign in failed. Please check credentials.');
+      // If DB connection is down or auth fails but dummy credentials were provided, log in as dummy user
+      if (isDummyCredentials) {
+        setAuthToken('dummy_muhurt_token');
+        const dummyUser: UserAccount = {
+          name: "Muhurt User",
+          email: "muhurtp@gmail.com",
+          phone: "+91 98765 43210",
+          isLoggedIn: true,
+        };
+        onLoginSuccess(dummyUser);
+        resetForm();
+        onClose();
+      } else {
+        setErrorMsg(err.message || 'Sign in failed. Please check credentials or use demo login.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -476,6 +492,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </div>
+                </div>
+
+                <div style={{
+                  margin: '8px 0 12px 0',
+                  padding: '6px 10px',
+                  backgroundColor: 'rgba(234, 179, 8, 0.1)',
+                  border: '1px dashed rgba(234, 179, 8, 0.3)',
+                  borderRadius: '8px',
+                  fontSize: '0.74rem',
+                  color: '#fde047'
+                }}>
+                  🔑 <strong>Demo Login (Offline / No-DB):</strong><br />
+                  ID: <code style={{ color: '#fff' }}>muhurtp@gmail.com</code> | Pass: <code style={{ color: '#fff' }}>muhurt123</code>
                 </div>
 
                 <button

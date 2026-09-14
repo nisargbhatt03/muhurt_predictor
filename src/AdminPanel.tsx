@@ -34,203 +34,8 @@ interface AdminPanelProps {
   onBackToApp: () => void;
 }
 
-const MOCK_ADMIN_USERS: AdminUser[] = [
-  {
-    id: 101,
-    name: "Acharya Rajesh Shastri",
-    email: "rajesh.astrology@gmail.com",
-    phone: "+91 98765 43210",
-    role: "admin",
-    is_active: true,
-    is_verified: true,
-    created_at: "2026-01-15T10:30:00Z",
-    date_of_birth: "1982-05-14",
-    gotra: "Kashyapa",
-    rashi: "Vrishabha (Taurus)",
-    nakshatra: "Rohini",
-    credits_remaining: 999,
-    subscription_tier: "pro"
-  },
-  {
-    id: 102,
-    name: "Priya Sharma",
-    email: "priya.sharma99@yahoo.com",
-    phone: "+91 91234 56789",
-    role: "user",
-    is_active: true,
-    is_verified: true,
-    created_at: "2026-02-01T14:20:00Z",
-    date_of_birth: "1994-09-22",
-    gotra: "Vashishta",
-    rashi: "Kanya (Virgo)",
-    nakshatra: "Hasta",
-    credits_remaining: 15,
-    subscription_tier: "premium"
-  },
-  {
-    id: 103,
-    name: "Vikram Patel",
-    email: "vikram.patel@techcorp.in",
-    phone: "+91 99887 76655",
-    role: "user",
-    is_active: true,
-    is_verified: false,
-    created_at: "2026-02-28T09:12:00Z",
-    date_of_birth: "1988-11-03",
-    gotra: "Bharadwaja",
-    rashi: "Mina (Pisces)",
-    nakshatra: "Revati",
-    credits_remaining: 5,
-    subscription_tier: "free"
-  },
-  {
-    id: 104,
-    name: "Sunita Deshmukh",
-    email: "sunita.d@outlook.com",
-    phone: "+91 97654 32109",
-    role: "user",
-    is_active: false,
-    is_verified: true,
-    created_at: "2026-03-05T18:45:00Z",
-    date_of_birth: "1991-03-17",
-    gotra: "Gautama",
-    rashi: "Simha (Leo)",
-    nakshatra: "Purva Phalguni",
-    credits_remaining: 0,
-    subscription_tier: "free"
-  },
-  {
-    id: 105,
-    name: "Pandit Anand Joshi",
-    email: "anand.joshi@vedic.org",
-    phone: "+91 98111 22334",
-    role: "admin",
-    is_active: true,
-    is_verified: true,
-    created_at: "2026-03-10T11:00:00Z",
-    date_of_birth: "1978-08-19",
-    gotra: "Atri",
-    rashi: "Makar (Capricorn)",
-    nakshatra: "Shravana",
-    credits_remaining: 500,
-    subscription_tier: "pro"
-  },
-  {
-    id: 106,
-    name: "Kavita Rao",
-    email: "kavita.rao@gmail.com",
-    phone: "+91 94444 55566",
-    role: "user",
-    is_active: true,
-    is_verified: true,
-    created_at: "2026-03-15T16:30:00Z",
-    date_of_birth: "1996-12-05",
-    gotra: "Angirasa",
-    rashi: "Tula (Libra)",
-    nakshatra: "Swati",
-    credits_remaining: 25,
-    subscription_tier: "premium"
-  },
-  {
-    id: 107,
-    name: "Amitav Ghosh",
-    email: "amitav.g@company.com",
-    phone: "+91 93333 44455",
-    role: "user",
-    is_active: true,
-    is_verified: false,
-    created_at: "2026-03-20T08:15:00Z",
-    date_of_birth: "1985-04-12",
-    gotra: "Pulastya",
-    rashi: "Mesha (Aries)",
-    nakshatra: "Ashwini",
-    credits_remaining: 3,
-    subscription_tier: "free"
-  },
-  {
-    id: 108,
-    name: "Meera Nambiar",
-    email: "meera.nambiar@kerala.net",
-    phone: "+91 97777 88899",
-    role: "user",
-    is_active: true,
-    is_verified: true,
-    created_at: "2026-03-25T14:50:00Z",
-    date_of_birth: "1992-07-28",
-    gotra: "Agastya",
-    rashi: "Karkat (Cancer)",
-    nakshatra: "Pushya",
-    credits_remaining: 18,
-    subscription_tier: "premium"
-  },
-  {
-    id: 109,
-    name: "Rohan Verma",
-    email: "rohan.v@techstudio.io",
-    phone: "+91 96666 55544",
-    role: "user",
-    is_active: true,
-    is_verified: true,
-    created_at: "2026-04-02T10:05:00Z",
-    date_of_birth: "1998-01-30",
-    gotra: "Vishwamitra",
-    rashi: "Dhanu (Sagittarius)",
-    nakshatra: "Mula",
-    credits_remaining: 5,
-    subscription_tier: "free"
-  },
-  {
-    id: 110,
-    name: "Neha Kulkarni",
-    email: "neha.kulkarni@pune.ac.in",
-    phone: "+91 95555 66677",
-    role: "user",
-    is_active: true,
-    is_verified: true,
-    created_at: "2026-04-10T12:40:00Z",
-    date_of_birth: "1990-10-14",
-    gotra: "Jamadagni",
-    rashi: "Kumbha (Aquarius)",
-    nakshatra: "Shatabhisha",
-    credits_remaining: 120,
-    subscription_tier: "pro"
-  },
-  {
-    id: 111,
-    name: "Deepak Agarwal",
-    email: "deepak.agarwal@retail.in",
-    phone: "+91 92222 33344",
-    role: "user",
-    is_active: false,
-    is_verified: false,
-    created_at: "2026-04-18T17:25:00Z",
-    date_of_birth: "1984-06-21",
-    gotra: "Kashyapa",
-    rashi: "Mithun (Gemini)",
-    nakshatra: "Ardra",
-    credits_remaining: 0,
-    subscription_tier: "free"
-  },
-  {
-    id: 112,
-    name: "Pooja Trivedi",
-    email: "pooja.trivedi@ahmedabad.org",
-    phone: "+91 91111 22233",
-    role: "user",
-    is_active: true,
-    is_verified: true,
-    created_at: "2026-04-25T09:10:00Z",
-    date_of_birth: "1995-02-18",
-    gotra: "Vashishta",
-    rashi: "Vrishchik (Scorpio)",
-    nakshatra: "Anuradha",
-    credits_remaining: 12,
-    subscription_tier: "premium"
-  }
-];
-
 export default function AdminPanel({ onBackToApp }: AdminPanelProps) {
-  const [users, setUsers] = useState<AdminUser[]>(MOCK_ADMIN_USERS);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [apiMode, setApiMode] = useState<PredictionApiMode>(getPredictionApiMode());
@@ -250,21 +55,14 @@ export default function AdminPanel({ onBackToApp }: AdminPanelProps) {
     setLoading(true);
     try {
       const data = await apiGetAdminUsers(searchTerm);
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         setUsers(data);
-      } else if (!searchTerm) {
-        setUsers(MOCK_ADMIN_USERS);
       } else {
         setUsers([]);
       }
     } catch (err) {
-      console.info("Using local fallback users in admin panel:", err);
-      const filtered = MOCK_ADMIN_USERS.filter(u => 
-        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (u.email && u.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (u.phone && u.phone.includes(searchTerm))
-      );
-      setUsers(filtered);
+      console.info("Could not fetch admin users:", err);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -671,8 +469,8 @@ export default function AdminPanel({ onBackToApp }: AdminPanelProps) {
             <tbody>
               {paginatedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '0.95rem' }}>
-                    No user records found matching your search.
+                  <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '1rem', fontWeight: 500 }}>
+                    {loading ? 'Loading user records...' : 'No records found.'}
                   </td>
                 </tr>
               ) : (

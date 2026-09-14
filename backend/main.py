@@ -18,6 +18,28 @@ load_dotenv()
 # Initialize Database Tables automatically on startup
 try:
     models.Base.metadata.create_all(bind=engine)
+    # Auto-seed dummy user if not already existing
+    from database import SessionLocal
+    from security import get_password_hash
+    db = SessionLocal()
+    existing_dummy = db.query(models.User).filter(models.User.email == "muhurtp@gmail.com").first()
+    if not existing_dummy:
+        dummy_user = models.User(
+            name="Muhurt User",
+            email="muhurtp@gmail.com",
+            phone="+91 98765 43210",
+            hashed_password=get_password_hash("muhurt123"),
+            role="admin",
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(dummy_user)
+        db.commit()
+        db.refresh(dummy_user)
+        db.add(models.UserProfile(user_id=dummy_user.id, gotra="Kashyapa", rashi="Vrishabha (Taurus)", nakshatra="Rohini"))
+        db.add(models.UserCredit(user_id=dummy_user.id, credits_remaining=999, subscription_tier="pro"))
+        db.commit()
+    db.close()
 except Exception as e:
     print(f"Database initialization warning: {e}")
 
