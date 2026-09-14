@@ -214,8 +214,8 @@ export default function App() {
   // App Mode State: 'predict_date' (Single Date) vs 'predict_panchang' (Custom Limbs) vs 'predict_5days' (5-Day Range)
   const [appMode, setAppMode] = useState<'predict_date' | 'predict_panchang' | 'predict_5days'>('predict_5days');
 
-  // Astrologer Profile Modal State (Initially Open Every Time on page load)
-  const [showProfileModal, setShowProfileModal] = useState(true);
+  // Astrologer Profile Modal State (Closed by default, opens only on profile icon click)
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // User Account & Auth Modal State
   const [userAccount, setUserAccount] = useState<UserAccount | null>(() => {
@@ -625,21 +625,6 @@ export default function App() {
               <User size={20} />
             </button>
 
-            {/* Admin Panel Icon Button */}
-            <button 
-              type="button" 
-              className="icon-action-btn"
-              onClick={() => {
-                window.history.pushState({}, '', '/admin');
-                setIsAdminView(true);
-              }}
-              title="Admin Panel User Grid & API Switcher (http://localhost:5173/admin)"
-              aria-label="Admin Panel"
-              style={{ background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.4)' }}
-            >
-              <ShieldCheck size={20} color="#fde047" />
-            </button>
-
             {/* Settings Icon Button */}
             <div style={{ position: 'relative' }}>
               <button 
@@ -742,7 +727,7 @@ export default function App() {
                             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left' }}
                           >
                             <div>
-                              <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>3. Predict Best Days in Range</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>3. Date Range Forecast</div>
                               <div style={{ fontSize: '0.72rem', opacity: 0.75 }}>Forecast top auspicious dates in range (up to 5)</div>
                             </div>
                             {appMode === 'predict_5days' && <Check size={16} color="#ffd700" />}
@@ -824,7 +809,7 @@ export default function App() {
           <div className="logo-icon">
             <Compass size={40} className="placeholder-icon" style={{ animationDuration: '30s' }} />
           </div>
-          <h1 className="app-title">Vedic Muhurt Predictor</h1>
+          <h1 className="app-title">अथ शुभमुहूर्त्तम्</h1>
           <p className="app-subtitle">
             Calculate and predict auspicious astrological alignment for Griha Pravesha, Udgatana, Vidyarambha, Vastu Shanti, and all 9 sacred ceremonies using classical Indian Vedic Astrology.
           </p>
@@ -842,7 +827,7 @@ export default function App() {
               <Sparkles size={20} /> 
               {appMode === 'predict_date' && `${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Date Predict`}
               {appMode === 'predict_panchang' && `${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Custom Panchang Predict`}
-              {appMode === 'predict_5days' && `${maxPredictionsCount > 1 ? `Best ${maxPredictionsCount} Days` : 'Best Day'} ${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Forecast`}
+              {appMode === 'predict_5days' && `${selectedMuhurt.nameEn} (${selectedMuhurt.nameGu}) Range Forecast`}
             </h2>
 
             {/* Option 1: Single Date Auto-Fetch Mode */}
@@ -1041,8 +1026,8 @@ export default function App() {
                 >
                   <Compass size={20} />
                   {isLoading && predictionMode === 'single'
-                    ? "Consulting Stars..."
-                    : `Predict ${selectedMuhurt.nameEn} for ${startDate}`
+                    ? "Predicting Muhurt..."
+                    : "Predict Muhurt"
                   }
                 </button>
               )}
@@ -1056,8 +1041,8 @@ export default function App() {
                 >
                   <Compass size={20} />
                   {isLoading && predictionMode === 'single'
-                    ? "Evaluating Panchang..."
-                    : `Predict ${selectedMuhurt.nameEn} for Custom Panchang`
+                    ? "Predicting Muhurt..."
+                    : "Predict Muhurt"
                   }
                 </button>
               )}
@@ -1071,8 +1056,8 @@ export default function App() {
                 >
                   <Sparkles size={20} style={{ color: 'inherit' }} />
                   {isLoading && predictionMode === 'multi'
-                    ? "Generating Forecast..."
-                    : `Predict Best ${maxPredictionsCount > 1 ? `${maxPredictionsCount} Days` : 'Day'} in Range`
+                    ? "Predicting Muhurt..."
+                    : "Predict Muhurt"
                   }
                 </button>
               )}
